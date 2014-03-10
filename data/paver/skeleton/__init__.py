@@ -79,8 +79,7 @@ TEMPLATES = {
     'development-defaults.ini': ('templates', 'development-defaults.ini'),
     '{% if webapp %}{{ module }}/templates/index.html{% endif %}': ('templates', 'index.html.template'),
     'MANIFEST.in': ('templates', 'MANIFEST.in.template'),
-    'build.config': ('templates', 'build.config.template'),
-    'build.py': ('templates', 'build.py.template'),
     '.gitignore': ('templates', '.gitignore.template'),
+    '{% if cli %}{{ module }}/cli.py{% endif %}': ('templates', 'cli.py.template'),
 }
 

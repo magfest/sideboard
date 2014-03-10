@@ -1,2 +1,1 @@
-wt_buildutils==0.3.2
 {% if sqlalchemy %}SQLAlchemy==0.8.0{% endif %}
