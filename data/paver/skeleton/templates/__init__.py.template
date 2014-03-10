@@ -1,0 +1,32 @@
+from __future__ import unicode_literals
+
+{% if webapp %}import cherrypy
+
+{% endif %}
+from sideboard.lib import log, parse_config{% if webapp %}, render_with_templates{% endif %}{% if service or sqlalchemy %}, services{% endif %}
+from {{ module }}._version import __version__
+
+config = parse_config(__file__)
+
+{% if service %}
+from {{ module }} import service
+services.register(service, '{{ module }}')
+
+{% endif %}
+{% if sqlalchemy %}
+from {{ module }} import sa
+services.register(sa.Session.rest, '{{ module }}_rest')
+{% endif %}
+
+{% if webapp %}
+@render_with_templates(config['template_dir'])
+class Root(object):
+    def index(self):
+        log.debug('this data will be used to render a template')
+        return {
+            'plugin': '{{ plugin }}',
+            'header': True
+        }
+
+cherrypy.tree.mount(Root(), '/{{ module }}')
+{% endif %}

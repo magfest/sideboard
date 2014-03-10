@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+    <head>
+        <title>Login</title>
+        <script type="text/javascript">
+            window.onload = function() {
+                document.getElementById("username").focus();
+            };
+        </script>
+    </head>
+    <body>
+        <div style="color:red">$(( message ))$</div>
+        <form method="post" action="login">
+        <input type="hidden" name="return_to" value="$(( return_to ))$" />
+        <table cellspacing="5" cellpadding="5">
+        <tr><td colspan="2"><h2 align="center">Login</h2></td></tr>
+        <tr>
+            <td>Username:</td>
+            <td><input id="username" type="text" name="username" value="$(( username ))$" /></td>
+        </tr>
+        <tr>
+            <td>Password:</td>
+            <td><input type="password" name="password" /></td>
+        </tr>
+        <tr>
+            <td></td>
+            <td><input type="submit" value="Login" /></td>
+        </tr>
+        </form>
+    </body>
+</html>

@@ -1,0 +1,6 @@
+# USED BY PAVER
+# Build configuration for paver script.
+#
+[build]
+package = {{ plugin }}
+release = 1

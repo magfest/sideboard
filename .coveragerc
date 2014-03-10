@@ -1,0 +1,12 @@
+[run]
+# don't collect the plugins subdirectories
+omit =
+    plugins/*/env/*.py
+    plugins/conftest.py
+    plugins/*/*/tests/*
+    tests/plugins/*
+
+include =
+    plugins/*/*/*.py
+    sideboard/tests/*
+    tests/*

@@ -1,0 +1,17 @@
+__pycache__
+env/
+build/
+dist/
+.project
+.pydev*
+.idea/
+*.egg-info/
+*.egg
+*.pyc
+*.pyo
+development.ini
+plugins/*
+!plugins/conftest.py
+data/sessions/*
+*-bootstrap.py
+data/*.db

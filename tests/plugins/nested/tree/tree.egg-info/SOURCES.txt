@@ -1,0 +1,13 @@
+setup.py
+tree/__init__.py
+tree/leaf1.py
+tree.egg-info/PKG-INFO
+tree.egg-info/SOURCES.txt
+tree.egg-info/dependency_links.txt
+tree.egg-info/not-zip-safe
+tree.egg-info/top_level.txt
+tree/branch1/__init__.py
+tree/branch1/leaf2.py
+tree/branch2/__init__.py
+tree/branch2/branch3/__init__.py
+tree/branch2/branch3/leaf3.py
