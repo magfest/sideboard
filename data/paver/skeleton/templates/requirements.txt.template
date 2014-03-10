@@ -1,1 +1,1 @@
-{% if sqlalchemy %}SQLAlchemy==0.8.0{% endif %}
+{% if sqlalchemy %}SQLAlchemy==0.8.5{% endif %}
