@@ -211,6 +211,7 @@ def run_all_assertions():
     ('no_webapp', 'w', 'do not expose webpages in the plugin'),
     ('no_sqlalchemy', 'a', 'do not use SQLAlchemy in the plugin'),
     ('no_service', 'r', 'do not expose a service in the plugin'),
+    ('cli', 'c', 'make this a cli application; implies -w/-r')
 ])
 def create_plugin(options):
     """create a plugin skeleton to start a new project"""
@@ -230,6 +231,10 @@ def create_plugin(options):
     kwargs = {}
     for opt in ['webapp', 'sqlalchemy', 'service']:
         kwargs[opt] = not getattr(options.create_plugin, 'no_' + opt, False)
+    kwargs['cli'] = options.create_plugin.cli
+    if kwargs['cli']:
+        kwargs['webapp'] = False
+        kwargs['service'] = False
     
     from data.paver import skeleton
     skeleton.create_plugin(PLUGINS_DIR, plugin_name, **kwargs)
