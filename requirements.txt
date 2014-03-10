@@ -1,6 +1,6 @@
 configobj==5.0.2
 cherrypy==3.2.2
-python-ldap==2.4.14
+python-ldap==2.3.13
 ws4py==0.2.2
 SQLAlchemy==0.8.5
 six==1.5.2
