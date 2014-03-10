@@ -15,7 +15,7 @@ import cherrypy
 from ws4py.websocket import WebSocket
 from ws4py.server.cherrypyserver import WebSocketPlugin, WebSocketTool
 
-from sideboard import Caller
+from sideboard.threads import Caller
 
 import sideboard.lib
 from sideboard.config import config
