@@ -188,7 +188,7 @@ This tells our configuration parser that the ``proxy`` setting is required, so w
 
 .. code-block:: none
 
-    proxy = "http://proxy1.vg.test.wt/"
+    proxy = "http://proxy1.test.tld/"
 
 When we write our RPM packaging, we'll need to make sure that the config file we include with our RPM includes this setting; otherwise we'll get an error when our config settings are validated because we'll be missing a required config option.
 
@@ -383,8 +383,8 @@ One of the advantagtes of Sideboard is that your code doesn't need to care where
 .. code-block:: none
 
     [rpc-services]
-    news = https://secure.server.test.wt/jsonrpc
-    weather = http://nonssl.server.test.wt/jsonrpc
+    news = https://secure.server.test.tld/jsonrpc
+    weather = http://nonssl.server.test.tld/jsonrpc
 
 .. warning::
 

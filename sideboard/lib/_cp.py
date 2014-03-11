@@ -71,7 +71,7 @@ def mainloop():
 
 class DaemonTask(threads.DaemonTask):
     """
-    Subclass of wt.toolkit.threads.DaemonTask which automatically starts its
+    Subclass of threads.DaemonTask which automatically starts its
     background task on Sideboard startup and stops it on Sideboard shutdown.
     """
     def __init__(self, *args, **kwargs):

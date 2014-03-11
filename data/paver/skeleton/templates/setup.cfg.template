@@ -1,4 +1,2 @@
 [easy_install]
 zip_ok = False
-index_url = http://pypi.wt.sec/
-allow_hosts = pypi.wt.sec

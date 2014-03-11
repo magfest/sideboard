@@ -45,7 +45,6 @@ def bootstrap_venv(intended_venv, bootstrap_name=None):
         # we expect this to be reversed in setup.py
         venv.packages_to_install = [line.strip() for line in reqs.readlines()[::-1] if line.strip()]
 
-    venv.index_url = 'http://pypi.wt.sec'
     venv.dest_dir = intended_venv
     if bootstrap_name:
         venv.script_name = '{}-bootstrap.py'.format(bootstrap_name)

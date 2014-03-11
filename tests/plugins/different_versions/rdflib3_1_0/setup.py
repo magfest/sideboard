@@ -13,7 +13,6 @@ if __name__ == '__main__':
         setup_requires=['distribute'],
         install_requires=[],
         packages=find_packages(),
-        #dependency_links=['http://pypi.wt.sec/all-packages'],
         include_package_data=True,
         package_data={pkg_name: []},
         zip_safe=False
