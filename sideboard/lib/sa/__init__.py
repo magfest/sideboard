@@ -19,28 +19,28 @@ __all__ = [b'UUID', b'JSON', b'CoerceUTF8', b'declarative_base', b'SessionManage
            b'RestException', b'restable', b'rest_validation', b'text_length_validation', b'regex_validation']
 
 
-def camelcase_to_underscore(value):
+def _camelcase_to_underscore(value):
     """ Converts camelCase string to underscore_separated (aka joined_lower).
 
-    >>> camelcase_to_underscore('fooBarBaz')
+    >>> _camelcase_to_underscore('fooBarBaz')
     'foo_bar_baz'
-    >>> camelcase_to_underscore('fooBarBazXYZ')
+    >>> _camelcase_to_underscore('fooBarBazXYZ')
     'foo_bar_baz_xyz'
     """
     s1 = re.sub(r'(.)([A-Z][a-z]+)', r'\1_\2', value)
     return re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
 
 
-def underscore_to_camelcase(value, cap_segment=None):
+def _underscore_to_camelcase(value, cap_segment=None):
     """ Converts underscore_separated string (aka joined_lower) into camelCase string.
 
-    >>> underscore_to_camelcase('foo_bar_baz')
+    >>> _underscore_to_camelcase('foo_bar_baz')
     'FooBarBaz'
-    >>> underscore_to_camelcase('foo_bar_baz', cap_segment=0)
+    >>> _underscore_to_camelcase('foo_bar_baz', cap_segment=0)
     'FOOBarBaz'
-    >>> underscore_to_camelcase('foo_bar_baz', cap_segment=1)
+    >>> _underscore_to_camelcase('foo_bar_baz', cap_segment=1)
     'FooBARBaz'
-    >>> underscore_to_camelcase('foo_bar_baz', cap_segment=1000)
+    >>> _underscore_to_camelcase('foo_bar_baz', cap_segment=1000)
     'FooBarBaz'
     """
     return "".join([s.title() if idx != cap_segment else s.upper() for idx, s in enumerate(value.split('_'))])
@@ -149,7 +149,7 @@ def declarative_base(klass):
 
     Mixed = declarative.declarative_base(cls=Mixed)
     Mixed.BaseClass = _SessionInitializer.BaseClass = Mixed
-    Mixed.__tablename__ = declarative.declared_attr(lambda cls: camelcase_to_underscore(cls.__name__))
+    Mixed.__tablename__ = declarative.declared_attr(lambda cls: _camelcase_to_underscore(cls.__name__))
     return Mixed
 
 
@@ -211,7 +211,7 @@ class SessionManager(object):
             return name
 
         subclasses = {ModelClass.__name__: ModelClass for ModelClass in cls.all_models()}
-        permutations = [name, underscore_to_camelcase(name), underscore_to_camelcase(name, cap_segment=0)]
+        permutations = [name, _underscore_to_camelcase(name), _underscore_to_camelcase(name, cap_segment=0)]
         for name in permutations:
             if name in subclasses:
                 return subclasses[name]

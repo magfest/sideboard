@@ -19,12 +19,12 @@ class Base(object):
     id = Column(UUID(), primary_key=True, default=uuid.uuid4)
 
 
-@restable(update=['tags','accounts'])
+@restable(update=['tags','employees'])
 @text_length_validation('name', 1, 100)
 class User(Base):
     name = Column(UnicodeText(), nullable=False, unique=True)
     tags = relationship('Tag', cascade='all,delete,delete-orphan', backref='user', passive_deletes=True)
-    accounts = relationship('Account', cascade='all,delete,delete-orphan', passive_deletes=True)
+    employees = relationship('Account', cascade='all,delete,delete-orphan', passive_deletes=True)
 
 
 @restable()
@@ -40,8 +40,8 @@ class Account(Base):
     username = Column(UnicodeText(), nullable=False, unique=True)
     password = Column(UnicodeText(), nullable=False)
 
-    purchaser_id = Column(UUID(), ForeignKey('purchaser.id', ondelete='SET NULL'))
-    purchaser = relationship(Boss, backref='accounts')
+    boss_id = Column(UUID(), ForeignKey('boss.id', ondelete='SET NULL'))
+    boss = relationship(Boss, backref='employees')
 
 
 @restable(no_update=['name', 'user_id'])
@@ -173,8 +173,8 @@ class RestTests(SideboardTest):
         self.create('Tag', user_id=self.hooch['id'], name='Male')
         self.ninja = self.create('Tag', user_id=self.turner['id'], name='Ninja')
         self.pirate = self.create('Tag', user_id=self.hooch['id'], name='Pirate')
-        self.purchaser = self.create('Purchaser', name='Acquisitions Inc')
-        self.turner_account = self.create('Account', username='turner_account', password='password', user_id=self.turner['id'], purchaser_id=self.purchaser['id'])
+        self.boss = self.create('Boss', name='Howard Hyde')
+        self.turner_account = self.create('Account', username='turner_account', password='password', user_id=self.turner['id'], boss_id=self.boss['id'])
         self.hooch_account = self.create('Account', username='hooch_account', password='password', user_id=self.hooch['id'])
 
 
@@ -516,7 +516,7 @@ class TestRestUpdate(RestTests):
             self.assertEqual('Turner the Awesome', session.account('turner_account').user.name)
 
     def test_handle_bad_relation_type(self):
-        self.assertRaises(RestException, Session.rest.update, self.query_from(self.turner), {'accounts': 'not a dict or sequence of dicts'})
+        self.assertRaises(RestException, Session.rest.update, self.query_from(self.turner), {'employees': 'not a dict or sequence of dicts'})
 
     def test_create_foreign_relation_with_one_spec(self):
         Session.rest.update({'_model': 'Account'}, {'user': {'name': 'New User'}})
@@ -552,7 +552,7 @@ class TestRestUpdate(RestTests):
 
     def test_editing_account_from_user(self):
         Session.rest.update(self.query_from(self.turner), {
-            'accounts': [{
+            'employees': [{
                 'username': 'turner_account',
                 'password': 'newpass'
             }]
@@ -568,13 +568,13 @@ class TestRestUpdate(RestTests):
             self.assertIs(None, session.account('turner_account').boss)
 
     def test_unset_nullable_foreign_relation_from_parent_with_none(self):
-        Session.rest.update(self.query_from(self.boss), {'accounts': None})
+        Session.rest.update(self.query_from(self.boss), {'employees': None})
         with Session() as session:
             self.assertEqual(1, session.query(Boss).count())
             self.assertIs(None, session.account('turner_account').boss)
 
     def test_unset_nullable_foreign_relation_from_parent_with_empty_list(self):
-        Session.rest.update(self.query_from(self.boss), {'accounts': []})
+        Session.rest.update(self.query_from(self.boss), {'employees': []})
         with Session() as session:
             self.assertEqual(1, session.query(Boss).count())
             self.assertIs(None, session.account('turner_account').boss)
@@ -677,7 +677,7 @@ class TestRestCreate(RestTests):
             'password': 'password'
         })
         with Session() as session:
-            self.assertEqual(2, len(session.user('Turner').accounts))
+            self.assertEqual(2, len(session.user('Turner').employees))
 
 
 class TestRestValidations(RestTests):
