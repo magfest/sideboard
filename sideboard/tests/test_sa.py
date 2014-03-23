@@ -10,8 +10,8 @@ from sqlalchemy.schema import Column, ForeignKey, UniqueConstraint
 
 from sideboard.lib import log, listify
 from sideboard.tests import SideboardTest, SideboardServerTest, WebSocketMixin
-from sideboard.lib.sa._rest import normalize_query, collect_ancestor_classes
-from sideboard.lib.sa import SessionManager, UUID, JSON, declarative_base, RestException, restable, text_length_validation, regex_validation
+from sideboard.lib.sa._crud import normalize_query, collect_ancestor_classes
+from sideboard.lib.sa import SessionManager, UUID, JSON, declarative_base, CrudException, crudable, text_length_validation, regex_validation
 
 
 @declarative_base
@@ -19,7 +19,7 @@ class Base(object):
     id = Column(UUID(), primary_key=True, default=uuid.uuid4)
 
 
-@restable(update=['tags','employees'])
+@crudable(update=['tags','employees'])
 @text_length_validation('name', 1, 100)
 class User(Base):
     name = Column(UnicodeText(), nullable=False, unique=True)
@@ -27,12 +27,12 @@ class User(Base):
     employees = relationship('Account', cascade='all,delete,delete-orphan', passive_deletes=True)
 
 
-@restable()
+@crudable()
 class Boss(Base):
     name = Column(UnicodeText(), nullable=False, unique=True)
 
 
-@restable(no_update=['username'])
+@crudable(no_update=['username'])
 @regex_validation('username', r'[0-9a-zA-z]+', 'Usernames may only contain alphanumeric characters')
 class Account(Base):
     user_id = Column(UUID(), ForeignKey('user.id', ondelete='RESTRICT'), nullable=False)
@@ -44,7 +44,7 @@ class Account(Base):
     boss = relationship(Boss, backref='employees')
 
 
-@restable(no_update=['name', 'user_id'])
+@crudable(no_update=['name', 'user_id'])
 class Tag(Base):
     __table_args__ = (UniqueConstraint('user_id', 'name'),)
 
@@ -53,13 +53,13 @@ class Tag(Base):
 
 
 @text_length_validation('mixed_in_attr', 1, 10)
-class RestableMixin(object):
+class CrudableMixin(object):
     """Test that validation decorators on Mixins work as expected"""
     mixed_in_attr = Column(UnicodeText(), default='default string')
     extra_data = Column(JSON(), default={}, server_default="{}")
 
 
-@restable(
+@crudable(
     data_spec={
         'date_attr': {
             'date_format': 'Y-M-d',
@@ -88,8 +88,8 @@ class RestableMixin(object):
 @regex_validation('string_model_attr', "^[A-Za-z0-9\.\_\-]+$", "test thing")
 @text_length_validation('overridden_desc', 1, 100)
 @text_length_validation('nonexistant_field', 1, 100)
-class RestableClass(RestableMixin, Base):
-    """Testbed class for getting the rest definition for a class that be restable"""
+class CrudableClass(CrudableMixin, Base):
+    """Testbed class for getting the crud definition for a class that be crudable"""
 
     string_attr = 'str'
     int_attr = 1
@@ -127,8 +127,8 @@ class RestableClass(RestableMixin, Base):
         return None
 
 
-@restable()
-class BasicClassMixedIn(RestableMixin, Base):
+@crudable()
+class BasicClassMixedIn(CrudableMixin, Base):
     pass
 
 
@@ -143,7 +143,7 @@ class Session(SessionManager):
             return self.query(Account).filter_by(username=username).one()
 
 
-class RestTests(SideboardTest):
+class CrudTests(SideboardTest):
     Session = Session
     
     def create(self, model, **params):
@@ -166,7 +166,7 @@ class RestTests(SideboardTest):
         }
 
     def setUp(self):
-        super(RestTests, self).setUp()
+        super(CrudTests, self).setUp()
         self.turner = self.create('User', name='Turner')
         self.hooch = self.create('User', name='Hooch')
         self.create('Tag', user_id=self.turner['id'], name='Male')
@@ -178,15 +178,15 @@ class RestTests(SideboardTest):
         self.hooch_account = self.create('Account', username='hooch_account', password='password', user_id=self.hooch['id'])
 
 
-class TestRestCount(RestTests):
+class TestCrudCount(CrudTests):
     def assert_counts(self, query, **expected):
-        actual = {count['_label']: count['count'] for count in Session.rest.count(query)}
+        actual = {count['_label']: count['count'] for count in Session.crud.count(query)}
         self.assertEqual(len(expected), len(actual))
         for label,count in expected.items():
             self.assertEqual(count, actual[label])
     
     def test_subquery(self):
-        results = Session.rest.count({
+        results = Session.crud.count({
             '_model' : 'Tag',
             'groupby' : ['name'],
             'field' : 'user_id',
@@ -223,7 +223,7 @@ class TestRestCount(RestTests):
                 }]
             }
         }
-        results = Session.rest.count(query)
+        results = Session.crud.count(query)
         expected = {
             'Ninja': 1,
             'Pirate': 1,
@@ -234,17 +234,17 @@ class TestRestCount(RestTests):
 
     @skip('Query.distinct(*columns) is postgresql-only')
     def test_distinct(self):
-        results = Session.rest.count({'_model': 'Tag'})
+        results = Session.crud.count({'_model': 'Tag'})
         self.assertEqual(4, results[0]['count'])
         
-        results = Session.rest.count({
+        results = Session.crud.count({
             '_model': 'Tag',
             'distinct' : ['name']
         })
         self.assertEqual(3, results[0]['count'])
 
     def test_groupby(self):
-        results = Session.rest.count({
+        results = Session.crud.count({
             '_model': 'Tag',
             'groupby' : ['name']
         })
@@ -301,19 +301,19 @@ class TestRestCount(RestTests):
         self.assert_counts([hooch_query, turner_query, all_query], User=2, HoochCount=1, TurnerCount=1)
 
 
-class TestRestRead(RestTests):
+class TestCrudRead(CrudTests):
     def extract(self, models, *fields):
         return [{f: m[f] for f in fields if f in m} for m in listify(models)]
     
     def assert_read_result(self, expected, query, data=None):
         expected = listify(expected)
-        actual = Session.rest.read(query, data)
+        actual = Session.crud.read(query, data)
         self.assertEqual(len(expected), actual['total'])
         self.assertEqual(sorted(expected, key=lambda m: m.get('id', m.get('_model'))),
                          sorted(actual['results'],key=lambda m: m.get('id', m.get('_model'))))
     
     def test_subquery(self):
-        results = Session.rest.read({
+        results = Session.crud.read({
             '_model': 'Tag',
             'field': 'user_id',
             'comparison': 'in',
@@ -330,7 +330,7 @@ class TestRestRead(RestTests):
             self.assertTrue(tag['name'] in ['Ninja', 'Male'])
 
     def test_compound_subquery(self):
-        results = Session.rest.read({
+        results = Session.crud.read({
             '_model': 'Tag',
             'field': 'user_id',
             'comparison': 'in',
@@ -353,21 +353,21 @@ class TestRestRead(RestTests):
 
     @skip('Query.distinct(*columns) is postgresql-only')
     def test_distinct(self):
-        results = Session.rest.read({
+        results = Session.crud.read({
             '_model': 'Tag',
             'distinct' : ['name']
         })
         self.assertEqual(3, results['total'])
         self.assertEqual(3, len(results['results']))
         
-        results = Session.rest.read({
+        results = Session.crud.read({
             '_model': 'Tag',
             'distinct' : True
         })
         self.assertEqual(4, results['total'])
         self.assertEqual(4, len(results['results']))
         
-        results = Session.rest.read({
+        results = Session.crud.read({
             '_model': 'Tag',
             'distinct' : ['name', 'id']
         })
@@ -375,7 +375,7 @@ class TestRestRead(RestTests):
         self.assertEqual(4, len(results['results']))
 
     def test_omit_keys_that_are_returned_by_default(self):
-        results = Session.rest.read({'_model': 'Account'}, {
+        results = Session.crud.read({'_model': 'Account'}, {
             '_model': False,
             'id': False,
             'username': True,
@@ -482,32 +482,32 @@ class TestRestRead(RestTests):
         self.assert_read_result(expected, query, [{'username': True}, {'user_id': True}])
 
     def test_handle_bad_query(self):
-        self.assertRaises(RestException, Session.rest.read, {'field': 'last_name'})
+        self.assertRaises(CrudException, Session.crud.read, {'field': 'last_name'})
 
     def test_handle_illegal_read(self):
-        results = Session.rest.read(self.query_from(self.turner), {'__repr__': True})
+        results = Session.crud.read(self.query_from(self.turner), {'__repr__': True})
         self.assertNotIn('__repr__', results['results'][0])
 
     def test_handle_read_on_nonexistant_attribute(self):
-        results = Session.rest.read(self.query_from(self.turner), {'does_not_exist': True})
+        results = Session.crud.read(self.query_from(self.turner), {'does_not_exist': True})
         self.assertNotIn('does_not_exist', results['results'][0])
 
 
-class TestRestUpdate(RestTests):
+class TestCrudUpdate(CrudTests):
     def test_single_update(self):
-        Session.rest.update({'_model': 'Account', 'field': 'username', 'value': 'turner_account'}, {'password': 'changing'})
+        Session.crud.update({'_model': 'Account', 'field': 'username', 'value': 'turner_account'}, {'password': 'changing'})
         with Session() as session:
             self.assertEqual('password', session.account('hooch_account').password)
             self.assertEqual('changing', session.account('turner_account').password)
 
     def test_multiple_updates(self):
-        Session.rest.update({'_model': 'Account'}, {'password': 'foobar'})
+        Session.crud.update({'_model': 'Account'}, {'password': 'foobar'})
         with Session() as session:
             for account in session.query(Account).all():
                 self.assertEqual(account.password, 'foobar')
 
     def test_nested_json(self):
-        Session.rest.update({'_model': 'Account', 'username': 'turner_account'}, {
+        Session.crud.update({'_model': 'Account', 'username': 'turner_account'}, {
             'password': 'barbaz',
             'user': {'name': 'Turner the Awesome'}
         })
@@ -516,42 +516,42 @@ class TestRestUpdate(RestTests):
             self.assertEqual('Turner the Awesome', session.account('turner_account').user.name)
 
     def test_handle_bad_relation_type(self):
-        self.assertRaises(RestException, Session.rest.update, self.query_from(self.turner), {'employees': 'not a dict or sequence of dicts'})
+        self.assertRaises(CrudException, Session.crud.update, self.query_from(self.turner), {'employees': 'not a dict or sequence of dicts'})
 
     def test_create_foreign_relation_with_one_spec(self):
-        Session.rest.update({'_model': 'Account'}, {'user': {'name': 'New User'}})
+        Session.crud.update({'_model': 'Account'}, {'user': {'name': 'New User'}})
         with Session() as session:
             self.assertEqual(3, len(session.query(User).all()))
             self.assertEqual('New User', session.account('turner_account').user.name)
             self.assertEqual('New User', session.account('hooch_account').user.name)
     
     def test_create_foreign_relation_with_multiple_specs(self):
-        Session.rest.update([self.query_from(self.turner_account), self.query_from(self.hooch_account)], 2 * [{'user': {'name': 'New User'}}])
+        Session.crud.update([self.query_from(self.turner_account), self.query_from(self.hooch_account)], 2 * [{'user': {'name': 'New User'}}])
         with Session() as session:
             self.assertEqual(3, len(session.query(User).all()))
             self.assertEqual('New User', session.account('turner_account').user.name)
             self.assertEqual('New User', session.account('hooch_account').user.name)
 
     def test_adding_and_removing_tag(self):
-        Session.rest.update(self.query_from(self.turner), {'tags': []})
+        Session.crud.update(self.query_from(self.turner), {'tags': []})
         with Session() as session:
             self.assertFalse(session.user('Turner').tags)
             self.assertEqual(2, session.query(Tag).count())
         
-        Session.rest.update(self.query_from(self.turner), {'tags': [{'name': 'New'}]})
+        Session.crud.update(self.query_from(self.turner), {'tags': [{'name': 'New'}]})
         with Session() as session:
             self.assertEqual(3, session.query(Tag).count())
             [new] = session.user('Turner').tags
             self.assertEqual('New', new.name)
     
     def test_removing_tags_with_none(self):
-        Session.rest.update(self.query_from(self.turner), {'tags': None})
+        Session.crud.update(self.query_from(self.turner), {'tags': None})
         with Session() as session:
             self.assertFalse(session.user('Turner').tags)
             self.assertEqual(2, session.query(Tag).count())
 
     def test_editing_account_from_user(self):
-        Session.rest.update(self.query_from(self.turner), {
+        Session.crud.update(self.query_from(self.turner), {
             'employees': [{
                 'username': 'turner_account',
                 'password': 'newpass'
@@ -562,47 +562,47 @@ class TestRestUpdate(RestTests):
             self.assertEqual('newpass', session.account('turner_account').password)
 
     def test_unset_nullable_foreign_relation(self):
-        Session.rest.update(self.query_from(self.turner_account), {'boss': None})
+        Session.crud.update(self.query_from(self.turner_account), {'boss': None})
         with Session() as session:
             self.assertEqual(1, session.query(Boss).count())
             self.assertIs(None, session.account('turner_account').boss)
 
     def test_unset_nullable_foreign_relation_from_parent_with_none(self):
-        Session.rest.update(self.query_from(self.boss), {'employees': None})
+        Session.crud.update(self.query_from(self.boss), {'employees': None})
         with Session() as session:
             self.assertEqual(1, session.query(Boss).count())
             self.assertIs(None, session.account('turner_account').boss)
 
     def test_unset_nullable_foreign_relation_from_parent_with_empty_list(self):
-        Session.rest.update(self.query_from(self.boss), {'employees': []})
+        Session.crud.update(self.query_from(self.boss), {'employees': []})
         with Session() as session:
             self.assertEqual(1, session.query(Boss).count())
             self.assertIs(None, session.account('turner_account').boss)
 
     def test_update_nonexistent_attribute(self):
-        self.assertRaises(Exception, Session.rest.update, self.query_from(self.turner), {'does_not_exist': 'foo'})
+        self.assertRaises(Exception, Session.crud.update, self.query_from(self.turner), {'does_not_exist': 'foo'})
 
     def test_update_nonupdatable_attribute(self):
-        self.assertRaises(Exception, Session.rest.update, self.query_from(self.turner_account), {'username': 'foo'})
+        self.assertRaises(Exception, Session.crud.update, self.query_from(self.turner_account), {'username': 'foo'})
 
 
-class TestRestDelete(RestTests):
+class TestCrudDelete(CrudTests):
     @skip('sqlite is not compiled with foreign key support on Jenkins; this test works on my machine but not on Jenkins')
     def test_delete_cascades_to_tags(self):
-        Session.rest.delete(self.query_from(self.turner_account))
-        Session.rest.delete(self.query_from(self.turner))
+        Session.crud.delete(self.query_from(self.turner_account))
+        Session.crud.delete(self.query_from(self.turner))
         with Session() as session:
             self.assertEqual(1, session.query(Account).count())
             self.assertEqual(2, session.query(Tag).count())
 
     def test_delete_by_id(self):
-        Session.rest.delete({'_model': 'Account', 'field': 'id', 'value': self.turner_account['id']})
+        Session.crud.delete({'_model': 'Account', 'field': 'id', 'value': self.turner_account['id']})
         with Session() as session:
             self.assertEqual(1, session.query(Account).count())
             self.assertRaises(Exception, session.account, 'turner_account')
 
     def test_multiple_deletes_by_id(self):
-        Session.rest.delete([
+        Session.crud.delete([
             {'_model': 'Account', 'field': 'username', 'value': 'turner_account'},
             {'_model': 'Tag', 'field': 'name', 'value': 'Pirate'}
         ])
@@ -612,19 +612,19 @@ class TestRestDelete(RestTests):
             self.assertRaises(Exception, session.account, 'turner_account')
 
     def test_empty_delete(self):
-        self.assertEqual(0, Session.rest.delete([]))
+        self.assertEqual(0, Session.crud.delete([]))
 
     def test_delete_without_results(self):
-        self.assertEqual(0, Session.rest.delete({'_model': 'Account', 'field': 'username', 'value': 'does_not_exist'}))
+        self.assertEqual(0, Session.crud.delete({'_model': 'Account', 'field': 'username', 'value': 'does_not_exist'}))
 
     def test_non_single_delete(self):
-        self.assertRaises(RestException, Session.rest.delete, {'_model': 'Account'})
-        self.assertRaises(RestException, Session.rest.delete, {'_model': 'Tag', 'field': 'name', 'value': 'Male'})
+        self.assertRaises(CrudException, Session.crud.delete, {'_model': 'Account'})
+        self.assertRaises(CrudException, Session.crud.delete, {'_model': 'Tag', 'field': 'name', 'value': 'Male'})
 
 
-class TestRestCreate(RestTests):
+class TestCrudCreate(CrudTests):
     def test_basic_create(self):
-        Session.rest.create({
+        Session.crud.create({
             '_model': 'Tag',
             'name': 'New',
             'user_id': self.turner['id']
@@ -633,7 +633,7 @@ class TestRestCreate(RestTests):
             self.assertEqual({'New', 'Ninja', 'Male'}, {tag.name for tag in session.user('Turner').tags})
 
     def test_deeply_nested_create(self):
-        Session.rest.create({
+        Session.crud.create({
             '_model': 'Account',
             'username': 'new',
             'password': 'createdpass',
@@ -649,10 +649,10 @@ class TestRestCreate(RestTests):
             self.assertEqual({'Recent', 'Male'}, {tag.name for tag in new.user.tags})
 
     def test_duplicate_create(self):
-        self.assertRaises(RestException, Session.rest.create, {'_model': 'User', 'name': 'Turner'})
+        self.assertRaises(CrudException, Session.crud.create, {'_model': 'User', 'name': 'Turner'})
 
     def test_create_two_objects(self):
-        Session.rest.create([{
+        Session.crud.create([{
             '_model': 'Boss',
             'name': 'NewCo'
         }, {
@@ -664,13 +664,13 @@ class TestRestCreate(RestTests):
             self.assertEqual(2, session.query(Boss).count())
 
     def test_handle_bad_spec_no_model(self):
-        self.assertRaises(RestException, Session.rest.create, {'name': 'Turner'})
+        self.assertRaises(CrudException, Session.crud.create, {'name': 'Turner'})
 
     def test_setting_null_on_unnullable_attributes(self):
-        self.assertRaises(RestException, Session.rest.create, {'_model': 'User', 'name': None})
+        self.assertRaises(CrudException, Session.crud.create, {'_model': 'User', 'name': None})
 
     def test_set_foreign_key_relations_using_string_id(self):
-        Session.rest.create({
+        Session.crud.create({
             '_model': 'Account',
             'user_id': self.turner['id'],
             'username': 'turner_account_other_users',
@@ -680,13 +680,13 @@ class TestRestCreate(RestTests):
             self.assertEqual(2, len(session.user('Turner').employees))
 
 
-class TestRestValidations(RestTests):
+class TestCrudValidations(CrudTests):
     def test_length(self):
-        self.assertRaises(RestException, Session.rest.update, {'_model': 'User'}, {'name': ''})
-        self.assertRaises(RestException, Session.rest.update, {'_model': 'User'}, {'name': 'x' * 101})
+        self.assertRaises(CrudException, Session.crud.update, {'_model': 'User'}, {'name': ''})
+        self.assertRaises(CrudException, Session.crud.update, {'_model': 'User'}, {'name': 'x' * 101})
     
     def test_regex(self):
-        self.assertRaises(RestException, Session.rest.update, {'_model': 'Account'}, {'username': '!@#'})
+        self.assertRaises(CrudException, Session.crud.update, {'_model': 'Account'}, {'username': '!@#'})
 
 
 class TestNormalizeQuery(TestCase):
@@ -783,7 +783,7 @@ class TestCollectModels(SideboardTest):
 
     def assert_models(self, *args):
         expected_models = set(args[:-1])
-        actual_models = Session.rest._collect_models(args[-1])
+        actual_models = Session.crud._collect_models(args[-1])
         self.assertItemsEqual(expected_models, actual_models)
 
     def test_single(self):
@@ -799,7 +799,7 @@ class TestCollectModels(SideboardTest):
         self.assert_models(Account, User, Tag, {'_model': 'Account', 'field': 'user.name.tags'})
 
 
-class TestWebsocketsRestSubscriptions(SideboardServerTest, WebSocketMixin):
+class TestWebsocketsCrudSubscriptions(SideboardServerTest, WebSocketMixin):
     Session = Session
     
     def setUp(self):
@@ -808,39 +808,39 @@ class TestWebsocketsRestSubscriptions(SideboardServerTest, WebSocketMixin):
         self.ws = self.open_ws()
         self.client = self._testMethodName
 
-        class MockRest:
+        class MockCrud:
             pass
 
-        mr = self.mr = MockRest()
+        mr = self.mr = MockCrud()
         for name in ['create', 'update', 'delete']:
-            setattr(mr, name, Session.rest.rest_notifies(self.make_rest_method(name), delay=0.5))
+            setattr(mr, name, Session.crud.crud_notifies(self.make_crud_method(name), delay=0.5))
         for name in ['read', 'count']:
-            setattr(mr, name, Session.rest.rest_subscribes(self.make_rest_method(name)))
-        self.override('rest', mr)
+            setattr(mr, name, Session.crud.crud_subscribes(self.make_crud_method(name)))
+        self.override('crud', mr)
 
-    def make_rest_method(self, name):
-        def rest_method(*args, **kwargs):
-            log.debug('mocked rest.{}'.format(name))
+    def make_crud_method(self, name):
+        def crud_method(*args, **kwargs):
+            log.debug('mocked crud.{}'.format(name))
             assert not getattr(self.mr, name + '_error', False)
             return uuid.uuid4().hex
 
-        rest_method.__name__ = name.encode('utf-8')
-        return rest_method
+        crud_method.__name__ = name.encode('utf-8')
+        return crud_method
 
     def models(self, *models):
         return [{'_model': model} for model in models]
 
     def read(self, *models):
-        self.ws._send(method='rest.read', client=self.client, params=self.models(*models))
+        self.ws._send(method='crud.read', client=self.client, params=self.models(*models))
         self.assert_incoming(trigger='subscribe')
 
     def update(self, *models, **kwargs):
         client = kwargs.get('client', 'unique_client_' + uuid.uuid4().hex)
-        self.ws._send(method='rest.update', client=client, params=self.models(*models))
+        self.ws._send(method='crud.update', client=client, params=self.models(*models))
         self.assert_incoming(client=client)
 
     def test_get_models(self):
-        assertModels = lambda xs, models: self.assertItemsEqual(xs, Session.rest._get_models(models))
+        assertModels = lambda xs, models: self.assertItemsEqual(xs, Session.crud._get_models(models))
 
         assertModels([], 0)
         assertModels([], {})
@@ -875,10 +875,10 @@ class TestWebsocketsRestSubscriptions(SideboardServerTest, WebSocketMixin):
     def test_triggered_error(self):
         self.mr.update_error = True
         with self.open_ws() as other_ws:
-            other_ws._send(method='rest.read', client='other_tte', params=self.models('User'))
+            other_ws._send(method='crud.read', client='other_tte', params=self.models('User'))
             self.assert_incoming(other_ws, client='other_tte')
             self.update('User')
-            self.ws._send(method='rest.update', client=self.client, params=self.models('User'))
+            self.ws._send(method='crud.update', client=self.client, params=self.models('User'))
             self.assertIn('error', self.next())
             self.assert_incoming(other_ws, client='other_tte', trigger='update')
 
@@ -891,7 +891,7 @@ class TestWebsocketsRestSubscriptions(SideboardServerTest, WebSocketMixin):
                         'or': [{'field': attr} for attr in attrs]}
 
         def call(*attrs):
-            self.call(method='rest.read', client=self.client, params=account(*attrs))
+            self.call(method='crud.read', client=self.client, params=account(*attrs))
 
         def assert_update_triggers(model):
             self.update(model)
@@ -921,7 +921,7 @@ class TestWebsocketsRestSubscriptions(SideboardServerTest, WebSocketMixin):
         self.assert_no_response()
 
     def test_trigger_and_callback(self):
-        result = self.call(method='rest.read', params=self.models('User'), client='ds_ttac')
+        result = self.call(method='crud.read', params=self.models('User'), client='ds_ttac')
         self.assert_no_response()
 
     def test_multiple_triggers(self):
@@ -944,12 +944,12 @@ class TestWebsocketsRestSubscriptions(SideboardServerTest, WebSocketMixin):
 
     def test_multiple_clients(self):
         self.read('Boss')
-        self.ws._send(method='rest.read', client='other_tmc', params=self.models('Boss'))
+        self.ws._send(method='crud.read', client='other_tmc', params=self.models('Boss'))
         self.assert_incoming(client='other_tmc')
         self.update('User')
         self.assert_no_response()
         self.read('Boss')
-        self.ws._send(method='rest.update', client='unused_client', params=self.models('Boss'))
+        self.ws._send(method='crud.update', client='unused_client', params=self.models('Boss'))
         self.next()
         self.assertEqual({self.client, 'other_tmc'},
                          {self.next()['client'], self.next()['client']})
@@ -957,7 +957,7 @@ class TestWebsocketsRestSubscriptions(SideboardServerTest, WebSocketMixin):
     def test_broadcast_error(self):
         with self.open_ws() as other_ws:
             self.read('User')
-            other_ws._send(method='rest.count', client='other_tbe', params=self.models('User'))
+            other_ws._send(method='crud.count', client='other_tbe', params=self.models('User'))
             self.assert_incoming(other_ws, client='other_tbe')
             self.mr.count_error = True
             self.update('User', client='other_client_so_everything_will_trigger')
@@ -965,17 +965,17 @@ class TestWebsocketsRestSubscriptions(SideboardServerTest, WebSocketMixin):
 
     def test_jsonrpc_notifications(self):
         self.read('User')
-        self.jsonrpc.rest.delete({'_model': 'User', 'field': 'name', 'value': 'Does Not Exist'})
+        self.jsonrpc.crud.delete({'_model': 'User', 'field': 'name', 'value': 'Does Not Exist'})
         self.assert_incoming(trigger='delete')
 
         self.jsonrpc._prepare_request = lambda data, headers: data.update({'websocket_client': self.client})
-        self.jsonrpc.rest.delete({'_model': 'User', 'field': 'name', 'value': 'Does Not Exist'})
+        self.jsonrpc.crud.delete({'_model': 'User', 'field': 'name', 'value': 'Does Not Exist'})
         self.assert_no_response()
 
 
-class TestRestableClass(TestCase):
+class TestCrudableClass(TestCase):
     maxDiff = None
-    expected_rest_spec = {
+    expected_crud_spec = {
         'fields': {
             'id': {
                 'name': 'id',
@@ -1120,17 +1120,17 @@ class TestRestableClass(TestCase):
         }
     }
        
-    def test_rest_spec(self):
-        self.assertEquals(self.expected_rest_spec, RestableClass._rest_spec)
+    def test_crud_spec(self):
+        self.assertEquals(self.expected_crud_spec, CrudableClass._crud_spec)
     
-    def test_basic_rest_spec(self):
-        expected_basic = {'fields': {k: self.expected_rest_spec['fields'][k] 
+    def test_basic_crud_spec(self):
+        expected_basic = {'fields': {k: self.expected_crud_spec['fields'][k] 
                                      for k in ('id', 'mixed_in_attr', 'extra_data')}}
-        self.assertEquals(expected_basic, BasicClassMixedIn._rest_spec)
+        self.assertEquals(expected_basic, BasicClassMixedIn._crud_spec)
 
-    def test_handle_no_rest_spec_attribute(self):
+    def test_handle_no_crud_spec_attribute(self):
         with self.assertRaises(AttributeError):
-            object._rest_spec
+            object._crud_spec
 
 
 class TestCollectAncestorClasses(TestCase):

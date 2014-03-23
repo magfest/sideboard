@@ -22,7 +22,7 @@ def version_contract():
             ],
             sideboard.lib.sa: [
                 'UUID', 'JSON', 'UTCDateTime', 'declarative_base', 'SessionManager',
-                'RestException', 'restable', 'rest_validation', 'text_length_validation',
+                'CrudException', 'crudable', 'crud_validation', 'text_length_validation',
                 'regex_validation'
             ]
         }
