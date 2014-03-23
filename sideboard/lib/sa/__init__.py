@@ -16,7 +16,7 @@ from sqlalchemy.types import TypeDecorator, String, DateTime, CHAR, Unicode
 from sideboard.lib import log, config
 
 __all__ = [b'UUID', b'JSON', b'CoerceUTF8', b'declarative_base', b'SessionManager',
-           b'RestException', b'restable', b'rest_validation', b'text_length_validation', b'regex_validation']
+           b'CrudException', b'crudable', b'crud_validation', b'text_length_validation', b'regex_validation']
 
 
 def _camelcase_to_underscore(value):
@@ -144,7 +144,7 @@ else:
 
 
 def declarative_base(klass):
-    class Mixed(klass, RestMixin):
+    class Mixed(klass, CrudMixin):
         pass
 
     Mixed = declarative.declarative_base(cls=Mixed)
@@ -161,7 +161,7 @@ class _SessionInitializer(type):
             if not hasattr(SessionClass, 'session_factory'):
                 SessionClass.session_factory = sessionmaker(bind=SessionClass.engine, autoflush=False, autocommit=False)
             SessionClass.initialize_db()
-            SessionClass.rest = make_rest_service(SessionClass)
+            SessionClass.crud = make_crud_service(SessionClass)
         return SessionClass
 
 
@@ -232,4 +232,4 @@ class SessionManager(object):
 
         raise ValueError('Unrecognized model: {}'.format(name))
 
-from sideboard.lib.sa._rest import RestMixin, make_rest_service, restable, RestException, rest_validation, text_length_validation, regex_validation
+from sideboard.lib.sa._crud import CrudMixin, make_crud_service, crudable, CrudException, crud_validation, text_length_validation, regex_validation

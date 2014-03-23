@@ -96,7 +96,7 @@ class TestWebsocketSubscriptions(SideboardServerTest, WebSocketMixin):
 
         self.assert_error_with(method='missing')
         self.assert_error_with(method='close_all')
-        self.assert_error_with(method='rest.missing')
+        self.assert_error_with(method='crud.missing')
         self.assert_error_with(method='too.many.dots')
         self.assert_error_with(method='self.echo.extra')
 
@@ -112,7 +112,7 @@ class TestWebsocketSubscriptions(SideboardServerTest, WebSocketMixin):
         self.assertEqual('hello', result['data'])
         self.assertNotIn('client', result)
 
-        result = self.call(method='rest.echo', params='hello', client='ds123')
+        result = self.call(method='crud.echo', params='hello', client='ds123')
         self.assertEqual('ds123', result['client'])
 
     def test_client_and_callback(self):

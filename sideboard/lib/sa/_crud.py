@@ -1,5 +1,5 @@
 """
-The rest module defines a number of functions for finding SQLAlchemy model objects via a query parameter and displaying a desired portion of the resulting object graph via a data specification parameter, optionally limiting the total number returned, potentially with an offset to support paging
+The crud module defines a number of functions for finding SQLAlchemy model objects via a query parameter and displaying a desired portion of the resulting object graph via a data specification parameter, optionally limiting the total number returned, potentially with an offset to support paging
 
 
 QUERY PARAMETER
@@ -24,7 +24,7 @@ meaning an array of one or more dictionaries (a dictionary is equivalent to an a
 
 where:
 - '<model_name>' - the string corresponding to the SQLAlchemy model class name which extends your @sideboard.lib.sa.declarative_base
-- '<query_label>' - the optional string that signifies the purpose of this query and is only used as a convenience for the consumer of the rest method. This primarily supports counts, but can used in client code to help cue the display of those results, defaults to the contents of _model
+- '<query_label>' - the optional string that signifies the purpose of this query and is only used as a convenience for the consumer of the crud method. This primarily supports counts, but can used in client code to help cue the display of those results, defaults to the contents of _model
 - '<logical_operator>' - the key is one of the following logical operators (with the value being one of more queries in a list):
 -- and ("intersection")
 -- or ("union")
@@ -86,9 +86,9 @@ is equivalent to:
 As you can see, that this short form would not be appropriate for create or updates function calls, as there's no way to specify the desired values. Additionally there's no way to specify a sub-object graph for a followed foreign key.
 
 
-RESULTS FOR rest.count
+RESULTS FOR crud.count
 ----------------------
-The rest.count method accepts a query parameter (format examined above) and returns a count of each of the supplied queries (typically, this is a count of each supplied model type), however the results also include a _label key, that can be used to differentiate between two different types of results within the same model type (e.g. enabled accounts vs disabled accounts)
+The crud.count method accepts a query parameter (format examined above) and returns a count of each of the supplied queries (typically, this is a count of each supplied model type), however the results also include a _label key, that can be used to differentiate between two different types of results within the same model type (e.g. enabled accounts vs disabled accounts)
 
 e.g.:
 
@@ -111,9 +111,9 @@ return [{
 }]
 
 
-RESULTS FOR rest.read
+RESULTS FOR crud.read
 ---------------------
-The rest.read method accepts both a query and data specification parameter (format examined above), and two parameters for fine-tuning which specific results are returned (examined in the upcoming "Fine-Tuning Read Results" section. The read method returns the total number of objects matching the query (separate from any sort of limits) and a list of the specific objects requested (subject to those limits) e.g.
+The crud.read method accepts both a query and data specification parameter (format examined above), and two parameters for fine-tuning which specific results are returned (examined in the upcoming "Fine-Tuning Read Results" section. The read method returns the total number of objects matching the query (separate from any sort of limits) and a list of the specific objects requested (subject to those limits) e.g.
 
 return {
     total: 20 # count of ALL matching objects
@@ -121,13 +121,13 @@ return {
     results: [<result>, <result>, <result>, <result>, <result>]
 }
 
-To prevent the client from always being forced to deal with entire query result, there are three parameters in place for the rest.read method to simplify only receiving the information that's desired. At a high level:
+To prevent the client from always being forced to deal with entire query result, there are three parameters in place for the crud.read method to simplify only receiving the information that's desired. At a high level:
 
-- 'Limit' takes a positive integer 'L' and when provided, the rest.read method will return at most L results, defaults to no limit
+- 'Limit' takes a positive integer 'L' and when provided, the crud.read method will return at most L results, defaults to no limit
 - 'Ordering' takes a list of ordering specification dictionaries for sorting by specific fields and in a specified direction (ascending or descending), defaults to no reordering after being returned from the database
-- 'Offset' takes a positive integer 'F' and when provided, the rest.read method will return at most L results, after skipping the first (based on the ordering specification) F results.
+- 'Offset' takes a positive integer 'F' and when provided, the crud.read method will return at most L results, after skipping the first (based on the ordering specification) F results.
 
-Used with the rest.read method to only return only a subset of information, allowing the client to only receive the amount of information it's interested in. Useful in conjunction with the offset and ordering parameter to finely-tune the information received.
+Used with the crud.read method to only return only a subset of information, allowing the client to only receive the amount of information it's interested in. Useful in conjunction with the offset and ordering parameter to finely-tune the information received.
 
 The comprehensive form of the ordering parameter is as follows:
 
@@ -140,7 +140,7 @@ A single string in 'fields' is equivalent to a list with the string as the only 
 
 The list of dictionaries are interpreted as being ordered in decreasing priority. An example:
 
-The 'offset' parameter is used with the rest.read method to only return only a subset of information, allowing the client to only receive the amount of information it's interested in. Useful in conjunction with the limit and ordering parameter to finely-tune the information received.
+The 'offset' parameter is used with the crud.read method to only return only a subset of information, allowing the client to only receive the amount of information it's interested in. Useful in conjunction with the limit and ordering parameter to finely-tune the information received.
 
 Using the 4 records in the ordering example (including the ordering specification):
 - a limit of 1 with an offset of 0 (the default if unspecified) would return only the John Depp Human.
@@ -176,7 +176,7 @@ from sqlalchemy.sql.expression import alias, cast, label, bindparam, and_, or_, 
 from sideboard.lib import log, notify, listify, threadlocal, serializer
 
 
-class RestException(Exception):
+class CrudException(Exception):
     pass
 
 
@@ -617,8 +617,8 @@ def get_queries(x):
     return [d for d in queries if isinstance(d.get("_model"), basestring)]
 
 
-def rest_exceptions(fn):
-    """A decorator designed to catch exceptions from the rest api methods."""
+def crud_exceptions(fn):
+    """A decorator designed to catch exceptions from the crud api methods."""
     @wraps(fn)
     def wrapped(*args, **kwargs):
         try:
@@ -628,21 +628,21 @@ def rest_exceptions(fn):
             kw = {k : v for k, v in (kwargs or {}).iteritems()}
             log.error('Error calling {}.{} {!r} {!r}'.format(fn.__module__, fn.__name__, a, kw), exc_info=True)
             exc_class, exc, tb = sys.exc_info()
-            raise RestException, RestException(str(exc)), tb
+            raise CrudException, CrudException(str(exc)), tb
     return wrapped
 
 
-def make_rest_service(Session):
+def make_crud_service(Session):
 
-    class Rest(object):
+    class Crud(object):
         @staticmethod
-        def rest_subscribes(func):
-            func = rest_exceptions(func)
+        def crud_subscribes(func):
+            func = crud_exceptions(func)
             class subscriber(object):
                 @property
                 def subscribes(self):
                     message = threadlocal.get('message')
-                    return Rest._get_models(message.get('params')) if message else []
+                    return Crud._get_models(message.get('params')) if message else []
 
                 def __call__(self, *args, **kwargs):
                     return func(*args, **kwargs)
@@ -650,8 +650,8 @@ def make_rest_service(Session):
             return wraps(func)(subscriber())
 
         @staticmethod
-        def rest_notifies(func, **settings):
-            func = rest_exceptions(func)
+        def crud_notifies(func, **settings):
+            func = crud_exceptions(func)
             delay = settings.pop('delay', 0)
 
             class notifier(object):
@@ -659,7 +659,7 @@ def make_rest_service(Session):
                     try:
                         return func(*args, **kwargs)
                     finally:
-                        models = Rest._get_models(args, kwargs)
+                        models = Crud._get_models(args, kwargs)
                         notify(models, trigger=func.__name__, delay=delay)
 
             return wraps(func)(notifier())
@@ -869,11 +869,11 @@ def make_rest_service(Session):
         def get_time_format_string(self):
             """
             returns the python formatting string that is used to communicate datetime
-            objects to and from a subscription via the rest API
+            objects to and from a subscription via the crud API
             """
             return serializer._datetime_format
 
-        @rest_subscribes.__func__
+        @crud_subscribes.__func__
         def count(query):
             """
             Count the model objects matching the supplied query parameters
@@ -896,13 +896,13 @@ def make_rest_service(Session):
                     model = Session.resolve_model(filter['_model'])
                     result = {'_model' : filter['_model'], 
                               '_label' : filter.get('_label', filter['_model'])}
-                    if getattr(model, '_rest_perms', {}).get('read', True):
+                    if getattr(model, '_crud_perms', {}).get('read', True):
                         if filter.get('groupby', False):
                             columns = []
                             for attr in filter['groupby']:
                                 columns.append(getattr(model, attr))
 
-                            rows = Rest._filter_query(session.query(func.count(columns[0]), *columns), model, filter).all()
+                            rows = Crud._filter_query(session.query(func.count(columns[0]), *columns), model, filter).all()
                             result['count'] = []
                             for row in rows:
                                 count = {'count' : row[0]}
@@ -912,11 +912,11 @@ def make_rest_service(Session):
                                     index += 1
                                 result['count'].append(count)
                         else:
-                            result['count'] = Rest._filter_query(session.query(model), model, filter).count()
+                            result['count'] = Crud._filter_query(session.query(model), model, filter).count()
                     results.append(result)
             return results
 
-        @rest_subscribes.__func__
+        @crud_subscribes.__func__
         def read(query, data=None, order=None, limit=None, offset=0):
             """
             Get the model objects matching the supplied query parameters,
@@ -957,11 +957,11 @@ def make_rest_service(Session):
                     model = Session.resolve_model(filter['_model'])
                     total = 0
                     results = []
-                    if getattr(model, '_rest_perms', {}).get('read', True):
-                        total = Rest._filter_query(session.query(model), model, filter).count()
-                        results = Rest._filter_query(session.query(model), model, filter, limit, offset, order).all()
+                    if getattr(model, '_crud_perms', {}).get('read', True):
+                        total = Crud._filter_query(session.query(model), model, filter).count()
+                        results = Crud._filter_query(session.query(model), model, filter, limit, offset, order).all()
 
-                    return {'total':total, 'results':[r.rest_read(data[0]) for r in results]}
+                    return {'total':total, 'results':[r.crud_read(data[0]) for r in results]}
 
                 elif len(filters) > 1:
                     queries = []
@@ -970,15 +970,15 @@ def make_rest_service(Session):
                     sort_field_types = {}
                     for filter_index, filter in enumerate(filters):
                         model = Session.resolve_model(filter['_model'])
-                        if getattr(model, '_rest_perms', {}).get('read', True):
+                        if getattr(model, '_crud_perms', {}).get('read', True):
                             queried_models.append(model)
                             query_fields = [model.id, cast(literal(model.__name__), Text).label("_table_name"), cast(literal(filter_index), Integer)]
                             for sort_index, sort in enumerate(normalize_sort(model, order)):
                                 sort_field = getattr(model, sort['field'])
                                 sort_field_types[sort_index] = type(sort_field.__clause_element__().type)
                                 query_fields.append(sort_field.label('anon_sort_{}'.format(sort_index)))
-                            queries.append(Rest._filter_query(session.query(*query_fields), model, filter))
-                            count_queries.append(Rest._filter_query(session.query(model.id), model, filter))
+                            queries.append(Crud._filter_query(session.query(*query_fields), model, filter))
+                            count_queries.append(Crud._filter_query(session.query(model.id), model, filter))
 
                     total = count_queries[0].union(*(count_queries[1:])).count()
                     query = queries[0].union(*(queries[1:]))
@@ -991,7 +991,7 @@ def make_rest_service(Session):
                         query = query.order_by(dir(sort_field))
                     if normalized_sort_fields:
                         query = query.order_by("_table_name")
-                    rows = Rest._limit_query(query, limit, offset).all()
+                    rows = Crud._limit_query(query, limit, offset).all()
 
                     result_table = {}
                     result_order = {}
@@ -1013,11 +1013,11 @@ def make_rest_service(Session):
                             ordered_results[result_order[instance.id]] = instance
                     results = [r for r in ordered_results if r is not None]
 
-                    return {'total':total, 'results':[r.rest_read(data[query_index_table[r.id]]) for r in results]}
+                    return {'total':total, 'results':[r.crud_read(data[query_index_table[r.id]]) for r in results]}
                 else:
                     return {'total':0, 'results':[]}
 
-        @rest_notifies.__func__
+        @crud_notifies.__func__
         def create(data):
             """
             Create a model object using the provided data specifications.
@@ -1030,7 +1030,7 @@ def make_rest_service(Session):
             """
             data = normalize_data(data)
             if any('_model' not in attrs for attrs in data):
-                raise RestException('_model is required to create a new item')
+                raise CrudException('_model is required to create a new item')
 
             created = []
             with Session() as session:
@@ -1038,12 +1038,12 @@ def make_rest_service(Session):
                     model = Session.resolve_model(attrs['_model'])
                     instance = model()
                     session.add(instance)
-                    instance.rest_create(**attrs)
+                    instance.crud_create(**attrs)
                     session.flush()  # any items that were created should now be queryable
-                    created.append(instance.rest_read())
+                    created.append(instance.crud_read())
             return created
 
-        @rest_notifies.__func__
+        @crud_notifies.__func__
         def update(query, data):
             """
             Get the model objects matching the supplied query parameters,
@@ -1065,13 +1065,13 @@ def make_rest_service(Session):
             with Session() as session:
                 for filter, attrs in zip(filters, data):
                     model = Session.resolve_model(filter['_model'])
-                    for instance in Rest._filter_query(session.query(model), model, filter):
-                        instance.rest_update(**attrs)
+                    for instance in Crud._filter_query(session.query(model), model, filter):
+                        instance.crud_update(**attrs)
                         # any items that were created should now be queryable
                         session.flush()
             return True
 
-        @rest_notifies.__func__
+        @crud_notifies.__func__
         def delete(query):
             """
             Delete the model objects matching the supplied query parameters
@@ -1086,10 +1086,10 @@ def make_rest_service(Session):
             with Session() as session:
                 for filter in filters:
                     model = Session.resolve_model(filter['_model'])
-                    if getattr(model, '_rest_perms', {}).get('can_delete', False):
-                        to_delete = Rest._filter_query(session.query(model), model, filter)
+                    if getattr(model, '_crud_perms', {}).get('can_delete', False):
+                        to_delete = Crud._filter_query(session.query(model), model, filter)
                         count = to_delete.count()
-                        assert count in [0, 1], "each query passed to rest.delete must return at most 1 item"
+                        assert count in [0, 1], "each query passed to crud.delete must return at most 1 item"
                         if count == 1:
                             # don't log if there wasn't actually a deletion
                             item_to_delete = to_delete.one()
@@ -1097,7 +1097,7 @@ def make_rest_service(Session):
                             deleted += count
             return deleted
 
-    return Rest()
+    return Crud()
 
 
 class memoized(object):
@@ -1131,7 +1131,7 @@ class memoized(object):
         return functools.partial(self.__call__, obj)
 
 
-class RestMixin(object):
+class CrudMixin(object):
     extra_defaults = []
     type_casts = {uuid.UUID: str}
     type_map = {}
@@ -1252,7 +1252,7 @@ class RestMixin(object):
     @property
     def _type_casts_for_to_dict(self):
         if not hasattr(self, '_to_dict_type_cast_mapping'):
-            self._to_dict_type_cast_mapping = defaultdict(lambda: lambda x: x, dict(RestMixin.type_casts, **self.type_casts))
+            self._to_dict_type_cast_mapping = defaultdict(lambda: lambda x: x, dict(CrudMixin.type_casts, **self.type_casts))
         return self._to_dict_type_cast_mapping
 
     def to_dict(self, attrs=None, validator=lambda self, name: True):
@@ -1392,7 +1392,7 @@ class RestMixin(object):
                     i[backref_id_name] = self.id
                 relation_inst = relation_cls._create_or_fetch(session, i, **{backref_id_name:self.id} if backref_id_name else {})
                 if isinstance(i, dict):
-                    relation_inst.from_dict(i, _rest_write_validator if relation_inst._sa_instance_state.identity else _rest_create_validator)
+                    relation_inst.from_dict(i, _crud_write_validator if relation_inst._sa_instance_state.identity else _crud_create_validator)
                 new_insts.append(relation_inst)
 
             relation = original_value
@@ -1450,46 +1450,46 @@ class RestMixin(object):
                                                                       val_dict.get('validator_message')))
         object.__setattr__(self, name, value)
 
-    def rest_read(self, attrs=None):
-        return self.to_dict(attrs, validator=_rest_read_validator)
+    def crud_read(self, attrs=None):
+        return self.to_dict(attrs, validator=_crud_read_validator)
 
-    def rest_create(self, **kwargs):
-        return self.from_dict(kwargs, validator=_rest_create_validator)
+    def crud_create(self, **kwargs):
+        return self.from_dict(kwargs, validator=_crud_create_validator)
 
-    def rest_update(self, **kwargs):
-        return self.from_dict(kwargs, validator=_rest_write_validator)
+    def crud_update(self, **kwargs):
+        return self.from_dict(kwargs, validator=_crud_write_validator)
 
 
-def _rest_read_validator(self, name):
-    _rest_perms = getattr(self, '_rest_perms', None)
-    if _rest_perms is not None and not _rest_perms.get('read', True):
+def _crud_read_validator(self, name):
+    _crud_perms = getattr(self, '_crud_perms', None)
+    if _crud_perms is not None and not _crud_perms.get('read', True):
         raise ValueError('Attempt to read non-readable model {}'.format(self.__class__.__name__))
     elif name in self.extra_defaults:
         return True
-    elif _rest_perms is None:
+    elif _crud_perms is None:
         return not name.startswith('_')
     else:
-        return name in _rest_perms.get('read', {})
+        return name in _crud_perms.get('read', {})
 
 
-def _rest_write_validator(self, name, value=None):
-    _rest_perms = getattr(self, '_rest_perms', None)
+def _crud_write_validator(self, name, value=None):
+    _crud_perms = getattr(self, '_crud_perms', None)
     if getattr(self, name, None) == value:
         return True
-    elif not _rest_perms or not _rest_perms.get('update', False):
+    elif not _crud_perms or not _crud_perms.get('update', False):
         raise ValueError('Attempt to update non-updateable model {}'.format(self.__class__.__name__))
-    elif name not in _rest_perms.get('update', {}):
+    elif name not in _crud_perms.get('update', {}):
         raise ValueError('Attempt to update non-updateable attribute {}.{}'.format(self.__class__.__name__, name))
     else:
-        return name in _rest_perms.get("update", {})
+        return name in _crud_perms.get("update", {})
 
 
-def _rest_create_validator(self, name, value=None):
-    _rest_perms = getattr(self, '_rest_perms', {})
-    if not _rest_perms or not _rest_perms.get('can_create', False):
+def _crud_create_validator(self, name, value=None):
+    _crud_perms = getattr(self, '_crud_perms', {})
+    if not _crud_perms or not _crud_perms.get('can_create', False):
         raise ValueError('Attempt to create non-createable model {}'.format(self.__class__.__name__))
     else:
-        return name in _rest_perms.get("create", {})
+        return name in _crud_perms.get("create", {})
 
 
 def _isdata(obj):
@@ -1513,13 +1513,13 @@ def _isdata(obj):
         return True
 
 
-class restable(object):
+class crudable(object):
     """
     Convenience decorator for specifying what methods of a model object
-    instance can be interacted with via the REST-like API
+    instance can be interacted with via the CRUD API
 
     Intended to be used in the sa module for SQLAlchemy model classes i.e.:
-    @restable(
+    @crudable(
         create=True,
         read=['__something'],
         no_read=['password'],
@@ -1540,7 +1540,7 @@ class restable(object):
         ...
 
 
-    and the resulting object will have a class attribute of "rest_spec" holding
+    and the resulting object will have a class attribute of "crud_spec" holding
     a dictionary of:
 
     {create: True/False,
@@ -1625,7 +1625,7 @@ class restable(object):
             deleted
         @type can_delete: C{bool}
         @param data_spec: any additional information that should be added to
-            the L{model.get_rest_definition}. See that function for
+            the L{model.get_crud_definition}. See that function for
             complete documentation, but key items are:
             "desc" - Human-readable description, will default to docstrings if
                 available, else not be present in the final spec
@@ -1671,11 +1671,11 @@ class restable(object):
             def __get__(self, cls, owner):
                 return self.fget.__get__(None, owner)()
         
-        def _get_rest_perms(cls):
-            if getattr(cls, '_cached_rest_perms', False):
-                return cls._cached_rest_perms
+        def _get_crud_perms(cls):
+            if getattr(cls, '_cached_crud_perms', False):
+                return cls._cached_crud_perms
             
-            rest_perms = {
+            crud_perms = {
                 'can_create' : self.can_create,
                 'can_delete' : self.can_delete,
                 'read' : [],
@@ -1693,24 +1693,24 @@ class restable(object):
             read = list(set(read))
             for name in read:
                 if not self.no_read or name not in self.no_read:
-                    rest_perms['read'].append(name)
+                    crud_perms['read'].append(name)
             
-            update = self.update + deepcopy(rest_perms['read'])
+            update = self.update + deepcopy(crud_perms['read'])
             update = list(set(update))
             for name in update:
                 if not self.no_update or name not in self.no_update:
                     if name in cls.__table__.columns:
-                        rest_perms['update'].append(name)
+                        crud_perms['update'].append(name)
                     else:
                         attr = getattr(cls, name)
                         if isinstance(attr, property) and getattr(attr, 'fset', False):
-                            rest_perms['update'].append(name)
+                            crud_perms['update'].append(name)
                         elif (isinstance(attr, InstrumentedAttribute) and 
                               isinstance(attr.property, RelationshipProperty) and
                               attr.property.viewonly != True):
-                            rest_perms['update'].append(name)
+                            crud_perms['update'].append(name)
             
-            create = self.create + deepcopy(rest_perms['update'])
+            create = self.create + deepcopy(crud_perms['update'])
             for name in self.always_create:
                 create.append(name)
                 if name in self.no_create:
@@ -1718,19 +1718,19 @@ class restable(object):
             create = list(set(create))
             for name in create:
                 if not self.no_create or name not in self.no_create:
-                    rest_perms['create'].append(name)
+                    crud_perms['create'].append(name)
             
-            cls._cached_rest_perms = rest_perms
-            return cls._cached_rest_perms
+            cls._cached_crud_perms = crud_perms
+            return cls._cached_crud_perms
         
-        def _get_rest_spec(cls):
-            if getattr(cls, '_cached_rest_spec', False):
-                return cls._cached_rest_spec
+        def _get_crud_spec(cls):
+            if getattr(cls, '_cached_crud_spec', False):
+                return cls._cached_crud_spec
             
-            rest_perms = cls._rest_perms
+            crud_perms = cls._crud_perms
             
-            field_names = list(set(rest_perms['read']) | set(rest_perms['update']) | 
-                               set(rest_perms['create']) | set(self.data_spec.keys()))
+            field_names = list(set(crud_perms['read']) | set(crud_perms['update']) | 
+                               set(crud_perms['create']) | set(self.data_spec.keys()))
             fields = {}
             for name in field_names:
                 # json is implicitly unicode, and since this will eventually
@@ -1742,17 +1742,17 @@ class restable(object):
                 # kwargs to be specified, we're going to error here for 
                 # duplicate keys in dictionaries. Since we don't want to allow
                 # two different expected values for maxLength being sent in a
-                # rest spec for example
+                # crud spec for example
                 field_validator_kwargs = {
                     spec_key_name: spec_value
                     # collect each spec_kwarg for all validators of an attribute
-                    for rest_validator_dict in getattr(cls, '_validators', {}).get(name, [])
-                    for spec_key_name, spec_value in rest_validator_dict.get('spec_kwargs', {}).iteritems()
+                    for crud_validator_dict in getattr(cls, '_validators', {}).get(name, [])
+                    for spec_key_name, spec_value in crud_validator_dict.get('spec_kwargs', {}).iteritems()
                 }
                 
                 if field_validator_kwargs:
                     self.data_spec.setdefault(name, {})
-                    # manually specified rest validator keyword arguments 
+                    # manually specified crud validator keyword arguments 
                     # overwrite the decorator-supplied keyword arguments
                     field_validator_kwargs.update(self.data_spec[name].get('validators', {}))
                     self.data_spec[name]['validators'] = field_validator_kwargs
@@ -1769,9 +1769,9 @@ class restable(object):
                     fields[name] = field
                     continue
                 
-                field['read'] = name in rest_perms['read']
-                field['update'] = name in rest_perms['update']
-                field['create'] = name in rest_perms['create']
+                field['read'] = name in crud_perms['read']
+                field['update'] = name in crud_perms['update']
+                field['create'] = name in crud_perms['create']
                 
                 if field['read'] or field['update'] or field['create']:
                     fields[name] = field
@@ -1809,22 +1809,22 @@ class restable(object):
                 if isinstance(attr, InstrumentedAttribute) and isinstance(attr.property, RelationshipProperty):
                     field['_model'] = attr.property.mapper.class_.__name__
             
-            rest_spec = {'fields': fields}
-            cls._cached_rest_spec = rest_spec
-            return cls._cached_rest_spec
+            crud_spec = {'fields': fields}
+            cls._cached_crud_spec = crud_spec
+            return cls._cached_crud_spec
 
         def _type_map(cls):
             return dict(cls.type_map_defaults, **cls.type_map)
 
         cls._type_map = ClassProperty(classmethod(_type_map))
-        cls._rest_spec = ClassProperty(classmethod(_get_rest_spec))
-        cls._rest_perms = ClassProperty(classmethod(_get_rest_perms))
+        cls._crud_spec = ClassProperty(classmethod(_get_crud_spec))
+        cls._crud_perms = ClassProperty(classmethod(_get_crud_perms))
         return cls
 
 
-class rest_validation(object):
+class crud_validation(object):
     """
-    Base class for adding validators to a model, supporting adding to the rest
+    Base class for adding validators to a model, supporting adding to the crud
     spec, or to the save action
     """
     def __init__(self, attribute_name, model_validator, validator_message, **spec_kwargs):
@@ -1837,7 +1837,7 @@ class rest_validation(object):
             name with the python instance
         @param validator_message: message to print if the model validation fails
         @param spec_kwargs: the key/value pairs that should be added to the
-            the rest spec for this attribute name. This generally supports
+            the crud spec for this attribute name. This generally supports
             making the same sorts of validations in a client (e.g. javascript)
         """
         self.attribute_name = attribute_name
@@ -1860,7 +1860,7 @@ class rest_validation(object):
         return cls
 
 
-class text_length_validation(rest_validation):
+class text_length_validation(crud_validation):
     def __init__(self, attribute_name, min_length=None, max_length=None,
                  min_text='The minimum length of this field is {0}.',
                  max_text='The maximum length of this field is {0}.',
@@ -1884,10 +1884,10 @@ class text_length_validation(rest_validation):
                 kwargs['maxLengthText'] = max_text
 
         message = 'Length of value should be between {} and {} (inclusive; None means no min/max).'.format(min_length, max_length)
-        rest_validation.__init__(self, attribute_name, model_validator, message, **kwargs)
+        crud_validation.__init__(self, attribute_name, model_validator, message, **kwargs)
 
 
-class regex_validation(rest_validation):
+class regex_validation(crud_validation):
     def __init__(self, attribute_name, regex, message):
 
         def regex_validator(instance, text):
@@ -1900,5 +1900,5 @@ class regex_validation(rest_validation):
             # so leverage the fact that failing searches or matches return None types
             return re.search(regex, text) is not None
 
-        rest_validation.__init__(self, attribute_name, regex_validator, message,
+        crud_validation.__init__(self, attribute_name, regex_validator, message,
                                        regexText=message, regexString=regex)
