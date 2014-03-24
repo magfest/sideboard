@@ -8,9 +8,8 @@ from collections import defaultdict
 import jinja2
 import cherrypy
 
-from sideboard import threads
-
 import sideboard.lib
+from sideboard.lib import log
 
 
 _startup_registry = defaultdict(list)
@@ -39,7 +38,7 @@ def _run_shutdown():
             try:
                 func()
             except Exception:
-                sideboard.lib.log.warn('Ignored exception during shutdown', exc_info=True)
+                log.warn('Ignored exception during shutdown', exc_info=True)
 
 
 stopped = Event()
@@ -66,18 +65,6 @@ def mainloop():
                 break
     finally:
         _run_shutdown()
-    
-
-
-class DaemonTask(threads.DaemonTask):
-    """
-    Subclass of threads.DaemonTask which automatically starts its
-    background task on Sideboard startup and stops it on Sideboard shutdown.
-    """
-    def __init__(self, *args, **kwargs):
-        threads.DaemonTask.__init__(self, *args, **kwargs)
-        on_startup(self.start)
-        on_shutdown(self.stop)
 
 
 def ajax(method):

@@ -149,11 +149,6 @@ class SideboardServerTest(SideboardTest):
     jsonrpc_url = 'http://localhost:{}/jsonrpc'.format(port)
     jsonrpc = ServerProxy(jsonrpc_url)
 
-    class WebSocketClient(WebSocket):
-        pass
-
-    WebSocketClient.default_url = ws_url
-
     rsess_username = 'unit_tests'
 
     @staticmethod
@@ -196,7 +191,7 @@ class SideboardServerTest(SideboardTest):
     @classmethod
     def open_websocket(cls):
         socket.create_connection(('127.0.0.1', cls.port)).close()
-        cls.ws = cls.WebSocketClient()
+        cls.ws = WebSocket(cls.ws_url)
         for i in range(99):
             if cls.ws.connected:
                 break
@@ -220,8 +215,6 @@ class SideboardServerTest(SideboardTest):
 
     def setUp(self):
         SideboardTest.setUp(self)
-        self.patch_config(self.ws_url, 'subscription', 'ws_url')
-        self.patch_config(self.jsonrpc_url, 'subscription', 'jsonrpc_url')
 
     def patch_subscription(self, SubscriptionClass):
         sub = SubscriptionClass()

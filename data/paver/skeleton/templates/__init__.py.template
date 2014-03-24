@@ -15,7 +15,7 @@ services.register(service, '{{ module }}')
 {% endif %}
 {% if sqlalchemy %}
 from {{ module }} import sa
-services.register(sa.Session.rest, '{{ module }}_rest')
+services.register(sa.Session.crud, '{{ module }}_crud')
 {% endif %}
 
 {% if webapp %}
