@@ -6,10 +6,10 @@ import sys
 import socket
 import logging
 from time import sleep
-from Queue import Empty
 from urllib import urlencode
 from random import randrange
 from unittest import TestCase
+from Queue import Queue, Empty
 from contextlib import closing
 from urlparse import urlparse, parse_qsl
 
@@ -132,7 +132,7 @@ class SideboardTest(TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.orig_services = services._services.copy()
+        cls.orig_services = dict(services._services)  # shallow copy
 
     def setUp(self):
         self.configure_db()
@@ -143,11 +143,8 @@ class SideboardTest(TestCase):
 
 @py.test.mark.functional
 class SideboardServerTest(SideboardTest):
-    orig_port = config['cherrypy']['server.socket_port']
-    port = orig_port + 1
-    ws_url = 'ws://localhost:{}/wsrpc'.format(port)
-    jsonrpc_url = 'http://localhost:{}/jsonrpc'.format(port)
-    jsonrpc = ServerProxy(jsonrpc_url)
+    port = config['cherrypy']['server.socket_port']
+    jsonrpc = ServerProxy('http://localhost:{}/jsonrpc'.format(port))
 
     rsess_username = 'unit_tests'
 
@@ -159,8 +156,8 @@ class SideboardServerTest(SideboardTest):
 
     @classmethod
     def start_cherrypy(cls):
-        cherrypy.engine.unsubscribe('start', _run_startup)
-        cherrypy.engine.unsubscribe('stop', _run_shutdown)
+#        cherrypy.engine.unsubscribe('start', _run_startup)
+#        cherrypy.engine.unsubscribe('stop', _run_shutdown)
 
         class Root(object):
             @cherrypy.expose
@@ -172,10 +169,7 @@ class SideboardServerTest(SideboardTest):
         cherrypy.tree.mount(Root(), '/mock_login')
 
         cls.assert_port_open(cls.port)
-        cherrypy.config.update({
-            'server.socket_port': cls.port,
-            'engine.autoreload_on': False
-        })
+        cherrypy.config.update({'engine.autoreload_on': False})
         cherrypy.engine.start()
         cherrypy.engine.wait(cherrypy.engine.states.STARTED)
 
@@ -184,44 +178,30 @@ class SideboardServerTest(SideboardTest):
         cherrypy.engine.stop()
         cherrypy.engine.wait(cherrypy.engine.states.STOPPED)
         cherrypy.engine.state = cherrypy.engine.states.EXITING
-        cherrypy.config.update({'server.socket_port': cls.orig_port})
-        cherrypy.engine.subscribe('start', _run_startup, priority=98)
-        cherrypy.engine.subscribe('stop', _run_shutdown, priority=98)
-
-    @classmethod
-    def open_websocket(cls):
-        socket.create_connection(('127.0.0.1', cls.port)).close()
-        cls.ws = WebSocket(cls.ws_url)
-        for i in range(99):
-            if cls.ws.connected:
-                break
-            sleep(0.1)
-
-    @classmethod
-    def close_websocket(cls):
-        cls.ws.close()
+#        cherrypy.engine.subscribe('start', _run_startup, priority=98)
+#        cherrypy.engine.subscribe('stop', _run_shutdown, priority=98)
 
     @classmethod
     def setUpClass(cls):
         super(SideboardServerTest, cls).setUpClass()
         cls.start_cherrypy()
-        cls.open_websocket()
+        cls.ws = cls.patch_websocket(services.get_websocket())
+        cls.ws.connect(max_wait=2)
+        assert cls.ws.connected
 
     @classmethod
     def tearDownClass(cls):
-        cls.close_websocket()
         cls.stop_cherrypy()
         super(SideboardServerTest, cls).tearDownClass()
 
+    @staticmethod
+    def patch_websocket(ws):
+        ws.q = Queue()
+        ws.fallback = ws.q.put
+        return ws
+
     def setUp(self):
         SideboardTest.setUp(self)
-
-    def patch_subscription(self, SubscriptionClass):
-        sub = SubscriptionClass()
-        sub.WebSocketClient = self.WebSocketClient
-        self.addCleanup(sub.disconnect)
-        sub.connect()
-        return sub
 
     @cached_property
     def rsess(self):
@@ -233,7 +213,7 @@ class SideboardServerTest(SideboardTest):
     def url(self, path, **query_params):
         params = dict(parse_qsl(urlparse(path).query))
         params.update(query_params)
-        url = 'http://127.0.0.1:{}{}'.format(self.port, urlparse(path).path)
+        url = 'http://localhost:{}{}'.format(self.port, urlparse(path).path)
         if params:
             url += '?' + urlencode(params)
         return url
@@ -251,21 +231,16 @@ class SideboardServerTest(SideboardTest):
 @py.test.mark.functional
 class WebSocketMixin(object):
     def open_ws(self):
-        ws = self.WebSocketClient()
-        self.addCleanup(ws.close)
-        self.wait_for(lambda: ws.connected)
-        ws._checker.stop()
-        ws._dispatcher.stop()
-        return ws
+        return self.patch_websocket(WebSocket(connect_immediately=True, max_wait=2))
 
     def next(self, ws=None, timeout=2):
-        return (ws or self.ws)._dispatcher.q.get(timeout=timeout)[0][0]
+        return (ws or self.ws).q.get(timeout=timeout)
 
     def assert_incoming(self, ws=None, client=None, timeout=1, **params):
         data = self.next(ws, timeout)
-        self.assertEqual(client or self.client, data.get('client'))
+        assert (client or self.client) == data.get('client')
         for key, val in params.items():
-            self.assertEqual(val, data[key])
+            assert val == data[key]
 
     def assert_no_response(self):
         self.assertRaises(Empty, self.next)

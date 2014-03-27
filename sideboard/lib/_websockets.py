@@ -46,14 +46,14 @@ class _WebSocketClientDispatcher(WebSocketClient):
         return WebSocketClient.send(self, data)
 
     def received_message(self, message):
-        s = str(message)
-        log.debug('received {!r}', s)
+        message = str(message)
+        log.debug('received {!r}', message)
         try:
-            parsed = json.loads(s)
+            message = json.loads(message)
         except:
-            log.error('failed to parse incoming message', exc_info=True)
-        else:
-            self.dispatcher.defer(parsed)
+            log.warn('failed to parse incoming message', exc_info=True)
+        finally:
+            self.dispatcher.defer(message)
 
 
 class WebSocket(object):
@@ -68,17 +68,19 @@ class WebSocket(object):
     poll_method = 'sideboard.poll'
     WebSocketDispatcher = _WebSocketClientDispatcher
 
-    def __init__(self, url=None, ssl_opts=None, connect_immediately=True):
+    def __init__(self, url=None, ssl_opts=None, connect_immediately=True, max_wait=2):
         self.ws = None
-        self.url = url or 'http://localhost:{}/wsrpc'.format(config['cherrypy']['server.socket_port'])
+        self.url = url or 'ws://localhost:{}/wsrpc'.format(config['cherrypy']['server.socket_port'])
         self._lock = RLock()
         self._callbacks = {}
         self._counter = count()
         self.ssl_opts = ssl_opts
         self._reconnect_attempts = 0
         self._last_poll, self._last_reconnect_attempt = None, None
-        self._dispatcher = Caller(self._dispatch, threads=1, start_now=connect_immediately)
-        self._checker = DaemonTask(self._check, interval=1, start_now=connect_immediately)
+        self._dispatcher = Caller(self._dispatch, threads=1)
+        self._checker = DaemonTask(self._check, interval=1)
+        if connect_immediately:
+            self.connect(max_wait=max_wait)
 
     def __enter__(self):
         return self
@@ -104,15 +106,14 @@ class WebSocket(object):
             self._poll()
 
     def _poll(self):
-        with self._lock:
-            assert self.ws and self.ws.connected, 'cannot poll while websocket is not connected'
-            try:
-                self.call(self.poll_method)
-            except:
-                log.error('no poll response received from {!r}, closing connection, will attempt to reconnect', self.url, exc_info=True)
-                self.ws.close()
-            else:
-                self._last_poll = datetime.now()
+        assert self.ws and self.ws.connected, 'cannot poll while websocket is not connected'
+        try:
+            self.call(self.poll_method)
+        except:
+            log.error('no poll response received from {!r}, closing connection, will attempt to reconnect', self.url, exc_info=True)
+            self.ws.close()
+        else:
+            self._last_poll = datetime.now()
 
     def _reconnect(self):
         with self._lock:
@@ -138,7 +139,9 @@ class WebSocket(object):
 
     def _send(self, **kwargs):
         log.debug('sending {}', kwargs)
+        log.error('connected {}', self.connected)
         with self._lock:
+            log.error('still here?')
             assert self.connected, 'tried to send data on closed websocket {!r}'.format(self.url)
             try:
                 return self.ws.send(kwargs)
@@ -149,22 +152,39 @@ class WebSocket(object):
 
     def _dispatch(self, message):
         log.debug('dispatching {}', message)
-        assert 'client' in message or 'callback' in message, 'no callback or client in message {}'.format(message)
-        id = message.get('client') or message.get('callback')
-        assert id in self._callbacks, 'unknown dispatchee {}'.format(id)
-        if 'error' in message:
-            self._callbacks[id]['errback'](message['error'])
+        try:
+            assert isinstance(message, dict), 'incoming message is not a dictionary'
+            assert 'client' in message or 'callback' in message, 'no callback or client in message {}'.format(message)
+            id = message.get('client') or message.get('callback')
+            assert id in self._callbacks, 'unknown dispatchee {}'.format(id)
+        except AssertionError:
+            self.fallback(message)
         else:
-            self._callbacks[id]['callback'](message.get('data'))
+            if 'error' in message:
+                self._callbacks[id]['errback'](message['error'])
+            else:
+                self._callbacks[id]['callback'](message.get('data'))
+
+    def fallback(self, message):
+        log.error('no callback registered for message {!r}', message, exc_info=True)
+        raise
 
     @property
     def connected(self):
         """boolean indicating whether or not this connection is currently active"""
         return bool(self.ws) and self.ws.connected
 
-    def connect(self):
+    def connect(self, max_wait=0):
         self._checker.start()
         self._dispatcher.start()
+        for i in range(10 * max_wait):
+            if not self.connected:
+                stopped.wait(0.1)
+            else:
+                break
+        else:
+            if max_wait:
+                log.warn('websocket {!r} not connected after {} seconds', self.url, max_wait)
 
     def close(self):
         """
@@ -392,10 +412,11 @@ class Subscription(object):
         self.result = None
         connect_immediately = kwargs.pop('connect_immediately', False)
         self.method, self.args, self.kwargs = rpc_method, args, kwargs
-        self.ws = sideboard.lib.services.get_websocket(rpc_method.split('.')[0], connect_immediately=connect_immediately)
+        self.ws = sideboard.lib.services.get_websocket(rpc_method.split('.')[0])
         on_startup(self._subscribe)
         on_shutdown(self._unsubscribe)
         if connect_immediately:
+            self.ws.connect(max_wait=2)
             self._subscribe()
 
     def _subscribe(self):
@@ -411,7 +432,7 @@ class Subscription(object):
         subscribed to a method which by design doesn't re-fire on every change
         """
         assert self.ws.connected, 'cannot refresh {}: websocket not connected'.format(self.method)
-        self.callback(self.ws.call(self.method, *self.args, **self.kwargs))
+        self._callback(self.ws.call(self.method, *self.args, **self.kwargs))
 
     def _callback(self, response_data):
         self.result = response_data

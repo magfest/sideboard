@@ -389,7 +389,3 @@ websocket_plugin.subscribe()
 
 broadcaster = Caller(WebSocketDispatcher.broadcast)
 responder = Caller(WebSocketDispatcher.handle_message, threads=config['ws_thread_pool'])
-
-for _task in [broadcaster, responder]:
-    cherrypy.engine.subscribe("start", _task.start, priority=99)
-    cherrypy.engine.subscribe("stop", _task.stop)

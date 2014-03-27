@@ -91,18 +91,17 @@ class _Services(object):
         """
         return self._services
 
-    def register_websocket(self, url, **kwargs):
+    def register_websocket(self, url=None, **ws_kwargs):
         if url not in self._websockets:
-            self._websockets[url] = WebSocket(url, **kwargs)
+            self._websockets[url] = WebSocket(url, **ws_kwargs)
         return self._websockets[url]
 
-    def get_websocket(self, service_name, connect_immediately=False):
+    def get_websocket(self, service_name=None):
         for name, service in self._services.items():
             if name == service_name and isinstance(service, WebSocket):
                 return service
         else:
-            localhost = 'ws://localhost:{}/wsrpc'.format(config['cherrypy']['server.socket_port'])
-            return self.register_websocket(localhost, connect_immediately=connect_immediately)
+            return self.register_websocket()
 
     def __getattr__(self, name):
         return _ServiceDispatcher(self._services, name)

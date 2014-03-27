@@ -5,19 +5,17 @@ from warnings import warn
 from Queue import Queue, Empty
 from threading import Thread, Timer, Event, Lock
 
-from sideboard.lib import log, stopped, on_startup, on_shutdown
+from sideboard.lib import log, on_startup, on_shutdown
 
 
 class DaemonTask(object):
-    def __init__(self, func, interval=0.1, threads=1, stopped=stopped, start_now=False):
+    def __init__(self, func, interval=0.1, threads=1):
         self.lock = Lock()
         self.threads = []
-        self.stopped = stopped
+        self.stopped = Event()
         self.func, self.interval, self.thread_count = func, interval, threads
         on_startup(self.start)
         on_shutdown(self.stop)
-        if start_now:
-            self.start()
 
     @property
     def running(self):
@@ -61,10 +59,10 @@ class DaemonTask(object):
 
 
 class TimeDelayQueue(Queue):
-    def __init__(self, maxsize=0, stopped=stopped, start_now=False):
+    def __init__(self, maxsize=0):
         self.delayed = []
         Queue.__init__(self, maxsize)
-        self.task = DaemonTask(self._put_and_notify, stopped=stopped, start_now=start_now)
+        self.task = DaemonTask(self._put_and_notify)
 
     def put(self, item, block=True, timeout=None, delay=0):
         Queue.put(self, (delay, item), block, timeout)
@@ -94,9 +92,9 @@ class TimeDelayQueue(Queue):
 
 
 class Caller(DaemonTask):
-    def __init__(self, func, interval=0, threads=1, stopped=stopped, start_now=False):
-        self.q = TimeDelayQueue(stopped=stopped, start_now=start_now)
-        DaemonTask.__init__(self, self.call, interval=interval, threads=threads, stopped=stopped, start_now=start_now)
+    def __init__(self, func, interval=0, threads=1):
+        self.q = TimeDelayQueue()
+        DaemonTask.__init__(self, self.call, interval=interval, threads=threads)
         self.callee = func
 
     def call(self):
@@ -122,9 +120,9 @@ class Caller(DaemonTask):
 
 
 class GenericCaller(DaemonTask):
-    def __init__(self, interval=0, threads=1, stopped=stopped, start_now=False):
-        DaemonTask.__init__(self, self.call, interval=interval, threads=threads, stopped=stopped, start_now=start_now)
-        self.q = TimeDelayQueue(stopped=self.stopped)
+    def __init__(self, interval=0, threads=1):
+        DaemonTask.__init__(self, self.call, interval=interval, threads=threads)
+        self.q = TimeDelayQueue()
 
     def call(self):
         try:
