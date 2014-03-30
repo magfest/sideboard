@@ -91,17 +91,22 @@ class _Services(object):
         """
         return self._services
 
-    def register_websocket(self, url=None, **ws_kwargs):
+    def _register_websocket(self, url=None, **ws_kwargs):
         if url not in self._websockets:
             self._websockets[url] = WebSocket(url, **ws_kwargs)
         return self._websockets[url]
 
     def get_websocket(self, service_name=None):
+        """
+        Return the websocket connection to the machine that the specified service
+        is running on, or a websocket connection to localhost if the service is
+        unknown or not provided.
+        """
         for name, service in self._services.items():
             if name == service_name and isinstance(service, WebSocket):
                 return service
         else:
-            return self.register_websocket()
+            return self._register_websocket()
 
     def __getattr__(self, name):
         return _ServiceDispatcher(self._services, name)
@@ -130,7 +135,7 @@ def _register_rpc_services(rpc_services):
                 else:
                     ws_url = '{protocol}://{host}/wsprc'.format(host=host, protocol='wss' if opts['ca'] else 'ws')
                     ssl_opts = {'key_file': opts['client_key'], 'cert_file': opts['client_cert'], 'ca_certs': opts['ca']}
-                    service = services.register_websocket(ws_url, ssl_opts={k: v for k, v in ssl_opts if v})
+                    service = services._register_websocket(ws_url, ssl_opts={k: v for k, v in ssl_opts if v})
 
             services.register(service, name, _jsonrpc=jservice, _override=True)
 
