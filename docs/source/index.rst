@@ -403,9 +403,9 @@ One of the advantagtes of Sideboard is that your code doesn't need to care where
 
 Note that the rpc_services section contains a mapping of service names to hostnames, and you may optionally add a subsection for each hostname, specifying the client cert information.  If omitted, these values will default to the global values of the same names.  So if you're using the same CA for all of your sideboard apps, you probably won't need to include any subsections.
 
-We use websockets as the default RPC mechanism, but you can also use Jsonrpc as a fallback, using the .jsonrpc attribute of dradis.lib.services.  You can also configure a service to ONLY use jsonrpc using the ``jsonrpc_only`` config value in the subsection for that host; you probably shouldn't do that unless you're connecting to a non-Sideboard service.
+We use websockets as the default RPC mechanism, but you can also use Jsonrpc as a fallback, using the .jsonrpc attribute of sideboard.lib.services.  You can also configure a service to ONLY use jsonrpc using the ``jsonrpc_only`` config value in the subsection for that host; you probably shouldn't do that unless you're connecting to a non-Sideboard service.
 
->>> from dradis.lib import services
+>>> from sideboard.lib import services
 >>> services.foo.some_func()          # uses websockets
 'Hello World!'
 >>> services.foo.jsonrpc.some_func()  # uses jsonrpc
