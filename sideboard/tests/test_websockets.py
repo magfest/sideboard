@@ -5,12 +5,11 @@ from time import sleep
 
 import cherrypy
 
-from sideboard.lib import subscribes, notifies, stopped
-from sideboard.websockets import WebSocketDispatcher
-from sideboard.tests import SideboardServerTest, WebSocketMixin
+from sideboard.lib import subscribes, notifies
+from sideboard.tests import SideboardServerTest
 
 
-class TestWebsocketSubscriptions(SideboardServerTest, WebSocketMixin):
+class TestWebsocketSubscriptions(SideboardServerTest):
     def echo(self, s):
         self.echoes.append(s)
         return s
@@ -49,12 +48,8 @@ class TestWebsocketSubscriptions(SideboardServerTest, WebSocketMixin):
 
     def setUp(self):
         SideboardServerTest.setUp(self)
+        self.patch_config(1, 'ws_call_timeout')
         self.override('self', self)
-
-        assert self.ws.connected
-        assert not stopped.is_set()
-        assert self.ws._checker.running
-        assert self.ws._dispatcher.running
 
         self.echoes = []
         self.places = ['Here']
@@ -204,16 +199,16 @@ class TestWebsocketCall(SideboardServerTest):
         SideboardServerTest.setUp(self)
         self.override('test')
         self.patch_config(1, 'ws_call_timeout')
-    
+
     def fast(self):
         return 'fast'
-    
+
     def slow(self):
         sleep(2)
         return 'slow'
-    
+
     def test_fast(self):
         assert self.ws.call('test.fast') == 'fast'
-    
+
     def test_slow(self):
         self.assertRaises(Exception, self.ws.call, 'test.slow')

@@ -16,12 +16,12 @@ _startup_registry = defaultdict(list)
 _shutdown_registry = defaultdict(list)
 
 
-def on_startup(func, priority=98):
+def on_startup(func, priority=50):
     _startup_registry[priority].append(func)
     return func
 
 
-def on_shutdown(func, priority=98):
+def on_shutdown(func, priority=50):
     _shutdown_registry[priority].append(func)
     return func
 
@@ -42,8 +42,8 @@ def _run_shutdown():
 
 
 stopped = Event()
-on_startup(stopped.clear, priority=95)
-on_shutdown(stopped.set, priority=95)
+on_startup(stopped.clear, priority=0)
+on_shutdown(stopped.set, priority=0)
 
 cherrypy.engine.subscribe('start', _run_startup, priority=98)
 cherrypy.engine.subscribe('stop', _run_shutdown, priority=98)
@@ -60,7 +60,7 @@ def mainloop():
     try:
         while not stopped.is_set():
             try:
-                stopped.wait(1)
+                stopped.wait(0.1)
             except KeyboardInterrupt:
                 break
     finally:

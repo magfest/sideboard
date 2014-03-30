@@ -300,9 +300,8 @@ class TestWebSocket(SideboardServerTest):
         self.results = []
         self.counter = count()
         self.override('self', self)
-        self.ws = WebSocket(self.ws_url)
-        self.addCleanup(self.ws.close)
-        self.wait_for(lambda: self.ws.connected)
+        self.ws = WebSocket(connect_immediately=True, max_wait=5)
+        assert self.ws.connected
 
     def test_call_success(self):
         self.assertEqual('Hello World!', self.ws.call('self.callee'))
@@ -417,13 +416,13 @@ class TestServerHelpers(SideboardServerTest):
         super(TestServerHelpers, cls).setUpClass()
     
     def test_url(self):
-        self.assertEqual('http://127.0.0.1:8283/foo', self.url('/foo'))
-        self.assertEqual('http://127.0.0.1:8283/foo?bar=baz', self.url('/foo?bar=baz'))
-        self.assertEqual('http://127.0.0.1:8283/foo?bar=baz', self.url('/foo', bar='baz'))
+        self.assertEqual('http://localhost:8282/foo', self.url('/foo'))
+        self.assertEqual('http://localhost:8282/foo?bar=baz', self.url('/foo?bar=baz'))
+        self.assertEqual('http://localhost:8282/foo?bar=baz', self.url('/foo', bar='baz'))
         try:
-            self.assertEqual('http://127.0.0.1:8283/foo?bar=baz&baf=bax', self.url('/foo?bar=baz', baf='bax'))
+            self.assertEqual('http://localhost:8282/foo?bar=baz&baf=bax', self.url('/foo?bar=baz', baf='bax'))
         except:
-            self.assertEqual('http://127.0.0.1:8283/foo?baf=bax&bar=baz', self.url('/foo?bar=baz', baf='bax'))
+            self.assertEqual('http://localhost:8282/foo?baf=bax&bar=baz', self.url('/foo?bar=baz', baf='bax'))
 
     def test_get(self):
         self.assertEqual(self.rsess_username, self.get('/helper'))

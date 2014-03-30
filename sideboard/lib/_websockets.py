@@ -139,9 +139,7 @@ class WebSocket(object):
 
     def _send(self, **kwargs):
         log.debug('sending {}', kwargs)
-        log.error('connected {}', self.connected)
         with self._lock:
-            log.error('still here?')
             assert self.connected, 'tried to send data on closed websocket {!r}'.format(self.url)
             try:
                 return self.ws.send(kwargs)

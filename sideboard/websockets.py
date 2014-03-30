@@ -381,7 +381,6 @@ class WebSocketChecker(WebSocketTool):
         else:
             return WebSocketTool.upgrade(self, **kwargs)
 
-
 cherrypy.tools.websockets = WebSocketChecker()
 
 websocket_plugin = WebSocketPlugin(cherrypy.engine)
