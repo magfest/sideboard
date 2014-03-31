@@ -2,11 +2,8 @@ from __future__ import unicode_literals, print_function
 import ssl
 import socket
 from urlparse import urlparse
-from contextlib import closing
 
-from rpctools.jsonrpc import ServerProxy
-
-from sideboard.lib import config, services, entry_point
+from sideboard.lib import services, entry_point
 
 
 def _check(url, **ssl_params):
@@ -28,6 +25,7 @@ def _check(url, **ssl_params):
     else:
         status.append('successfully resolved host {} to {}'.format(host, ip))
     
+    sock = None
     try:
         sock = socket.create_connection((host, port))
     except Exception as e:
@@ -42,6 +40,9 @@ def _check(url, **ssl_params):
             return status + ['failed to complete SSL handshake ({}): {!s}'.format(ssl_params, e)]
         else:
             status.append('succeeded at SSL handshake')
+        finally:
+            if sock:
+                sock.close()
     
     status.append('everything seems to work')
     
@@ -49,24 +50,11 @@ def _check(url, **ssl_params):
 
 
 def check_all():
-    checks = {
-        'subscription (jsonrpc)': _check(config['subscription']['jsonrpc_url'],
-                                    ca_certs=config['subscription']['subscription_ca'],
-                                    keyfile=config['subscription']['subscription_client_key'],
-                                    certfile=config['subscription']['subscription_client_cert']),
-        'subscription (websockets)': _check(config['subscription']['ws_url'], 
-                                       ca_certs=config['subscription']['subscription_ca'],
-                                       keyfile=config['subscription']['subscription_client_key'],
-                                       certfile=config['subscription']['subscription_client_cert'])
-    }
-    
-    # this whole block of code is terrible
-    for name, service in services.get_services().items():
-        if service.__class__.__name__ == '_Method':
-            proxy = service._send.im_self
-            url = '{}://{}/'.format(proxy.type, proxy.host)
-            checks[name] = _check(url, ca_certs=proxy.ca_certs, keyfile=proxy.key_file, certfile=proxy.cert_file)
-    
+    checks = {}
+    for name, jservice in services._jsonrpc.items():
+        jproxy = jservice._send.im_self  # ugly kludge to get the ServerProxy object
+        url = '{}://{}/'.format(jproxy.type, jproxy.host)
+        checks[name] = _check(url, ca_certs=jproxy.ca_certs, keyfile=jproxy.key_file, certfile=jproxy.cert_file)
     return checks
 
 

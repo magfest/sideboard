@@ -22,7 +22,7 @@ from sideboard.lib import on_startup, config, ConfigurationError
 @on_startup
 def _check_sometimes_required_options():
     missing = []
-    for optname in ['subscription_host', 'ldap.url', 'ldap.basedn']:
+    for optname in ['ldap.url', 'ldap.basedn']:
         val = config[optname]
         if not val or isinstance(val, (list, tuple)) and not filter(bool, val):
             missing.append(optname)

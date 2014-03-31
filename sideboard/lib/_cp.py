@@ -8,21 +8,20 @@ from collections import defaultdict
 import jinja2
 import cherrypy
 
-from sideboard import threads
-
 import sideboard.lib
+from sideboard.lib import log
 
 
 _startup_registry = defaultdict(list)
 _shutdown_registry = defaultdict(list)
 
 
-def on_startup(func, priority=98):
+def on_startup(func, priority=50):
     _startup_registry[priority].append(func)
     return func
 
 
-def on_shutdown(func, priority=98):
+def on_shutdown(func, priority=50):
     _shutdown_registry[priority].append(func)
     return func
 
@@ -39,12 +38,12 @@ def _run_shutdown():
             try:
                 func()
             except Exception:
-                sideboard.lib.log.warn('Ignored exception during shutdown', exc_info=True)
+                log.warn('Ignored exception during shutdown', exc_info=True)
 
 
 stopped = Event()
-on_startup(stopped.clear, priority=95)
-on_shutdown(stopped.set, priority=95)
+on_startup(stopped.clear, priority=0)
+on_shutdown(stopped.set, priority=0)
 
 cherrypy.engine.subscribe('start', _run_startup, priority=98)
 cherrypy.engine.subscribe('stop', _run_shutdown, priority=98)
@@ -61,23 +60,11 @@ def mainloop():
     try:
         while not stopped.is_set():
             try:
-                stopped.wait(1)
+                stopped.wait(0.1)
             except KeyboardInterrupt:
                 break
     finally:
         _run_shutdown()
-    
-
-
-class DaemonTask(threads.DaemonTask):
-    """
-    Subclass of threads.DaemonTask which automatically starts its
-    background task on Sideboard startup and stops it on Sideboard shutdown.
-    """
-    def __init__(self, *args, **kwargs):
-        threads.DaemonTask.__init__(self, *args, **kwargs)
-        on_startup(self.start)
-        on_shutdown(self.stop)
 
 
 def ajax(method):

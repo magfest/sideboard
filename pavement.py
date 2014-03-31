@@ -230,7 +230,7 @@ def create_plugin(options):
     kwargs = {}
     for opt in ['webapp', 'sqlalchemy', 'service']:
         kwargs[opt] = not getattr(options.create_plugin, 'no_' + opt, False)
-    kwargs['cli'] = options.create_plugin.cli
+    kwargs['cli'] = getattr(options.create_plugin, 'cli', False)
     if kwargs['cli']:
         kwargs['webapp'] = False
         kwargs['service'] = False

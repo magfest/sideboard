@@ -3,7 +3,7 @@
 
 
 Welcome to Sideboard
-=================
+====================
 
 Sideboard makes it easy to do three main things:
 
@@ -56,12 +56,12 @@ Let's start by cloning the Sideboard repo and running it without any plugins:
 
 .. code-block:: none
 
-    $ git clone https://YOUR-USERNAME@github.com/appliedsec/sideboard.git
+    $ git clone https://github.com/appliedsec/sideboard.git
     $ cd sideboard/
     $ paver make_sideboard_venv
     $ ./env/bin/python sideboard/run_server.py
 
-Now you can go to `<http://localhost:8282/>`_ and you'll see a page show you Sideboard' version and all of the installed plugins (currently none).
+Now you can go to `<http://localhost:8282/>`_ and you'll see a page show you Sideboard's version and all of the installed plugins (currently none).
 
 So let's create a plugin with paver:
 
@@ -240,6 +240,7 @@ Here's what we did with the above code:
 
 So let's test out these methods in the REPL by running ``./env/bin/python`` from the top-level Sideboard directory (*not* your top-level plugin directory):
 
+>>> import sideboard
 >>> from ragnarok import service
 >>> service._check_for_apocalypse()
 >>> service.all_checks()
@@ -347,7 +348,7 @@ Plugins should never import any sideboard module that is not ``sideboard.lib`` o
 
 
 sideboard.lib
-----------
+-------------
 
 
 Services
@@ -357,39 +358,86 @@ Services
 
     ``sideboard.lib.services`` is how your plugin should expose RPC services and consume services exposed by other plugins
     
-    .. method:: register(module, namespace)
+    .. method:: register(module[, namespace])
     
         exposes everything in a module (or any object with callable functions)
     
         :param module: the module you are exposing; any function in this module which is not prefixed with an underscore will be callable
-        :param namespace: the prefix which consumers calling your method over RPC will use
+        :param namespace: the prefix which consumers calling your method over RPC will use; if omitted this defaults to your module name
+
+        After a module has been exposed, its methods can be called by other plugins, for example
+
+        .. code-block:: python
+
+            from sideboard.lib import services
+            news, weather = services.news, services.weather
+
+            def get_current_events():
+                return {
+                    "news": news.get_headlines(),
+                    "weather": weather.current_weather()
+                }
+
+        One of the advantagtes of Sideboard is that your code doesn't need to care where the other plugins are installed; they could be either local or remote.  If they're installed on the same machine, then the above code would just work with nothing else needed, and if they're on a different box, you'd need to add the ``rpc_services`` section to your config file:
+
+        .. code-block:: none
+
+            [rpc_services]
+            foo = example.com
+            bar = example.com
+            baz = secure.com
+            news = secure.com
+            weather = insecure.biz:8080
+
+            [[secure.com]]
+            ca = /path/to/ca.pem
+            client_key = /path/to/key.pem
+            client_cert = /path/to/cert.pem
+
+            [[insecure.biz:8080]]
+            jsonrpc_only = True
+            ca =
+            client_key =
+            client_cert =
+
+        Note that the rpc_services section contains a mapping of service names to hostnames, and you may optionally add a subsection for each hostname, specifying the client cert information.  If omitted, these values will default to the global values of the same names.  So if you're using the same CA for all of your sideboard apps, you probably won't need to include any subsections.
+
+    .. attribute:: jsonrpc
+
+        We use websockets as the default RPC mechanism, but you can also use Jsonrpc as a fallback, using the .jsonrpc attribute of sideboard.lib.services.  You can also configure a service to ONLY use jsonrpc using the ``jsonrpc_only`` config value in the subsection for that host; you probably shouldn't do that unless you're connecting to a non-Sideboard service.
+
+        >>> from sideboard.lib import services
+        >>> services.foo.some_func()          # uses websockets
+        'Hello World!'
+        >>> services.foo.jsonrpc.some_func()  # uses jsonrpc
+        'Hello World!'
+        >>> services.weather.some_func()      # uses jsonrpc
+
+    .. method:: get_websocket(service_name)
+
+        The services API already opens a websocket connection to each remote host which it's been configured to call out to for RPC services.  This method returns the underlying websocket connection for the specified service name, although you probably won't need to access these websocket connections directly, because
+        * if you need to make RPC calls, we recommend just calling into service object methods, e.g. ``services.foo.some_func()``
+        * if you need to make a websocket subscription, we recommend using the `Subscription <#Subscription>`_ class
 
 
-After a module has been exposed, its methods can be called by other plugins, for example
+.. attribute:: serializer
 
-.. code-block:: python
+    Our RPC mechanisms are all based on JSON, which means we need some way to serialize non-basic data types.  This does not cover parsing of incoming JSON, but instead only defines how outgoing RPC calls serialize their parameters.  Sideboard registers functions for ``datetime.date`` and ``datetime.datetime`` objects, and plugins may register functions for their own objects.
 
-    from sideboard.lib import services
-    news, weather = services.news, services.weather
-    
-    def get_all_phone_data(persona):
-        return {
-            "news": news.get_headlines(persona),
-            "weather": weather.current_weather(persona)
-        }
-
-One of the advantagtes of Sideboard is that your code doesn't need to care where the other plugins are installed; they could be either local or remote.  If they're installed on the same machine, then the above code would just work with nothing else needed, and if they're on a different box, you'd need to add the following section to your config file:
-
-.. code-block:: none
-
-    [rpc-services]
-    news = https://secure.server.test.tld/jsonrpc
-    weather = http://nonssl.server.test.tld/jsonrpc
-
-.. warning::
-
-    We currently use JSON-RPC as our transport mechanism for our services API, but we plan to migrate to websockets to allow easier use of websocket subscriptions.  Check back in future releases to see how the ``rpc-services`` section should look when we make this change.
-
+    .. method:: register(type, preprocessor)
+        
+        Registers a function which pre-processes all objects of the given type, before being serialized to JSON.
+        
+        This method raises an exception if you try to register a preprocessor for a type which already has been registered.
+        
+        :param type: class whose instances should be pre-processed by the provided function
+        :param preprocessor: function which takes a single argument and returns a value which will then be serialized to JSON
+        
+        As an example of how this is used, consider this snippet which Sideboard uses to define how ``datetime.date`` objects should be serialized:
+        
+        .. code-block:: python
+            
+            serializer.register(date, lambda d: d.strftime('%Y-%m-%d'))
 
 
 Configuration
@@ -442,7 +490,7 @@ We use `WebSockets <http://en.wikipedia.org/wiki/WebSocket>`_ extensively as our
 
     {
         "client": "client-1",
-        "method": "cnc.logged_in_usernames",
+        "method": "admin.logged_in_usernames",
         "params": ["SB1"]
     }
 
@@ -452,10 +500,10 @@ and immediately get back a response that looks like
 
     {
         "client": "client-1",
-        "data": ["jacks", "edwards"]
+        "data": ["admin", "username2"]
     }
 
-This would implicitly create a subscription; behind the scenes, calling the ``cnc.logged_in_usernames`` function causes your websocket connection to listen on one or more channels.
+This would implicitly create a subscription; behind the scenes, calling the ``admin.logged_in_usernames`` function causes your websocket connection to listen on one or more channels.
 
 Alternatively, you might want to make an RPC call and get a single response without making a subscription, e.g.
 
@@ -464,8 +512,8 @@ Alternatively, you might want to make an RPC call and get a single response with
     REQUEST:
     {
         "callback": "callback-1",
-        "method": "cnc.authenticate",
-        "params": ["jacks", "password"]
+        "method": "admin.authenticate",
+        "params": ["username", "password"]
     }
     
     RESPONSE:
@@ -498,7 +546,7 @@ When a function which has been declared to update those channels is called, the 
 
 .. function:: notifies(*channels)
     
-    Function decorator used to indicate that calling this function should trigger the notification to all clients subscribes to the specified channels.
+    Function decorator used to indicate that calling this function should trigger the notification to all clients subscribed to the specified channels.
     
     .. code-block:: python
     
@@ -515,7 +563,7 @@ When a function which has been declared to update those channels is called, the 
     
     Unless you have some specific reason to use this function, you should probably just decorate the appropriate function with the ``@notifies`` decorator.
 
-    :param channels: a list of strings, which are the names of the channels to notify
+    :param channels: a string or list of strings, which are the names of the channels to notify
 
 
 So in the above examples listed with the ``@subscribes`` and ``@notifies`` decorators, we might see the following sequence of requests and responses:
@@ -540,9 +588,18 @@ WebSocket Utils
 
 Sideboard provides several useful classes for establishing websocket connections to other Sideboard servers, implementing the websocket RPC protocol described in the previous section.
 
-.. class:: WebSocket(url)
+.. class:: WebSocket([url[, ssl_opts={}[, connect_immediately=True[, max_wait=2]]]])
     
-    Class representing a persistent websocket connection to the specified url.  Instantiating this thread creates immediately starts two threads:
+    Class representing a persistent websocket connection to the specified url (or connecting to this sideboard instance on localhost if url is omitted), with an option dictionary of extra keyword arguments to be passed to ssl.wrap_socket, typically client cert parameters.
+    
+    You probably won't ever need to instantiate this class directly in your production code, but it's used under the hood to implement the `services API <#services>`_ and is very useful for debugging or one-off scripts.
+    
+    :param url: the ``ws://`` or ``wss://`` url this websocket should connect to; if the url is omitted then we will connect to localhost on the port which Sideboard runs on
+    :param ssl_opts: dictionary of arguments which will be passed to `ssl.wrap_socket() <https://docs.python.org/2/library/ssl.html#ssl.wrap_socket>`_ if this is a secure ``wss://`` connection; this parameter could be used to pass client cert info
+    :param connect_immediately: if True (the default), try to open a connection immediately instead of having the connection opened automatically when Sideboard starts
+    :param max_wait: if ``connect_immediately`` set, this is passed to the ``.connect()`` method of this class
+    
+    Instantiating a WebSocket object immediately starts two threads (unless ``connect_immediately`` is false, in which case this will happen when ``.connect()`` is called):
     
     * a thread which listens on the open connection and dispatches incoming messages
     
@@ -556,7 +613,7 @@ Sideboard provides several useful classes for establishing websocket connections
         
       * when we re-connect, immediately re-fire all RPC method calls we're subscribed to, which gets the latest data and re-subscribes to the relevant channels
 
-    So after you instantiate this class does not guarantee that your connection is open; you should check the ``connected`` attribute if you are performing an action and relying on an immediate response.
+    So instantiating this class does not guarantee that your connection is open; you should check the ``connected`` attribute if you are performing an action and relying on an immediate response.
     
     If you only care about subscibing to a single method, you should probably use the `Subscription class <#Subscription>`_.
 
@@ -564,7 +621,7 @@ Sideboard provides several useful classes for establishing websocket connections
         
         Sometimes you want to make a synchronous call a method over websocket RPC, even though the websocket protocol is asynchronous.  This method sends an RPC message, then waits for a response and returns it when it arrives.
         
-        This method raises an exception if 10 seconds pass without a response, or if we receive an error response to our RPC message.
+        This method raises an exception if 10 seconds pass without a response, or if we receive an error response to our RPC message.  Note that this 10 second time can be overridden in the Sideboard configuration by changing the ``ws_call_timeout`` option.
         
         :param method: the name of the method to call; you may pass either positional or keyword arguments (but not both) to this method which will be sent as part of the RPC message
     
@@ -591,6 +648,12 @@ Sideboard provides several useful classes for establishing websocket connections
         
         :param client: the client id being unsubscribed; this is whatever was returned from the ``subscribe`` method
     
+    .. method:: connect([max_wait=0])
+    
+        Starts the two background threads described above.  This method returns immediately unless the ``max_wait`` parameter is specified.  If specified, we will wait for up to that many seconds for the underlying connection to be active.  If that much time elapses without a successful connection, a warning will be logged, but we will still return without raising an exception with the websocket in an unconnected state.
+        
+        This method is safe to call if this websocket is already connected; in that case this method is effectively a noop because nothing will happen.
+    
     .. method:: close()
         
         Closes this connection safely; any errors will be logged and swallowed, so this method will never raise an exception.  Both daemon threads are stopped.
@@ -601,16 +664,39 @@ Sideboard provides several useful classes for establishing websocket connections
         
         boolean indicating whether or not this connection is currently active
 
+    .. attribute:: fallback
+    
+        Handler function which is called when we receive a message which is not a response to either a ``call`` or ``subscribe`` RPC message.  By default this just logs an error message.  You can override this by either subclassing this class or simply by setting the attribute to a function which takes a single argument (the message received), e.g.
+        
+        >>> ws = WebSocket()
+        >>> ws.fallback = lambda message: do_something_with(message)
+
 
 .. class:: Subscription(rpc_method, *args, **kwargs)
     
-    Sideboard plugins often want to establish a `<#WebSocket>`_ connection to some other Sideboard plugin and subscribe to a function.  This class offers a convenient API for doing this; simply make a subclass and override the ``callback`` method.
+    Sideboard plugins often want to establish a `<#WebSocket>`_ connection to some other Sideboard plugin and subscribe to a function.  This class offers a convenient API for doing this; simply specify a method along with whatever arguments you want to pass, and you'll always have the latest response in the ``result`` field of this class, e.g.
+    
+    >>> from sideboard.lib import Subscription
+    >>> users = Subscription('admin.get_logged_in_users')
+    >>> users.result  # this will always be the latest data
+
+    If you want to perform immediate post-processing of the result, you can inherit from this class and override the ``callback`` method which is always passed the latest data, e.g.
+    
+    >>> class UserList(Subscription):
+    ...     def __init__(self):
+    ...         self.usernames = []
+    ...         Subscription.__init__(self, 'admin.get_logged_in_users')
+    ...     
+    ...     def callback(self, users):
+    ...         self.usernames = [user['username'] for user in users]
+    ... 
+    >>> users = UserList()
 
     :param rpc_method: the name of the method you want to subscribe to; you may pass either positional or keyword arguments (but not both) will be sent as part of the RPC message
     
     .. method:: callback(latest_data)
         
-        This method is called every time we get a response from the server with new data.  Override this method in your ``Subscription`` subclass to do whatever processing/storing you need.
+        This method is called every time we get a response from the server with new data.  You can override this method in a subclass of ``Subscription`` if you want to do immediate post-processing on the data.
         
         :param latest_data: the return value of the function you are subscribed to
         
@@ -619,10 +705,6 @@ Sideboard provides several useful classes for establishing websocket connections
         Manually send a one-time call of the method you're subscribed to and invoke our `callback <#Subscription.callback>`_ with the response.
         
         This method is usually unnecessary if your method subscribes to channels which are fired every time its data updates, which will almost always be true.  You should ignore this method if you don't already know that you need it.
-    
-    .. attribute:: WebSocketClient
-        
-        Class-level attribute which you can override with a `WebSocket <#WebSocket>`_ subclass which will be used to create your subscription.
 
 
 .. class Model(data[, prefix=None, [unpromoted=None, [defaults=None]]]):
@@ -650,7 +732,7 @@ Sideboard provides several useful classes for establishing websocket connections
 Dynamic Websites
 ^^^^^^^^^^^^^^^^
 
-We've standardized on `Jinja templates <http://jinja.pocoo.org/docs/>`_ as our template library.  We often write CherryPy page handlers which render templates, and we want to restrict access to logged-in users which authenticate with LDAP, so Sideboard has some decorators which implement this pattern.
+We provide some convenient helpers for using `Jinja templates <http://jinja.pocoo.org/docs/>`_.  Plugins typically write CherryPy page handlers which render templates, and we want to restrict access to logged-in users which authenticate with LDAP, so Sideboard has some decorators which implement this pattern.
 
 .. function:: render_with_templates([template_dir[, restricted=False]])
 
@@ -691,7 +773,7 @@ One of the most common things our web applications want to do is run tasks in th
 When we refer to "Sideboard starting" and "Sideboard stopping" we are referring specifically to when Sideboard starts its CherryPy server; this happens after all plugins have been imported, so you can safely call into other plugins in these tasks and functions.
 
 
-.. function:: on_startup(func, [priority=98])
+.. function:: on_startup(func[, priority=50])
     
     Cause a function to get called on startup.  You can use this as a decorator, or directly call it and pass a priority level which indicates the order in which the startup functions should be called.
     
@@ -704,33 +786,93 @@ When we refer to "Sideboard starting" and "Sideboard stopping" we are referring 
         def g():
             print("Hello Kitty!")
         
-        on_startup(g, priority=90)
+        on_startup(g, priority=40)
     
     :param func: The function to be called on startup; this function must be callable with no arguments.
-    :param priority: Order in which startup functions will be called; this is passed directly to ``cherrypy.engine.subscribe``.  Unless you really know what you're doing, this number should be greater than 70 and less than or equal to 100.
+    :param priority: Order in which startup functions will be called (lower priority items are called first); this can be any integer and the numbers are used for nothing other than ordering the handlers.
 
 
-.. function:: on_shutdown(func, [priority])
+.. function:: on_shutdown(func[, priority=50])
     
     Cause a function to get called on startup; this is invoked in exactly the same way as ``on_startup``
     
     :param func: The function to be called on shutdown; this function must be callable with no arguments.
-    :param priority: Order in which shutdown functions will be called; this is passed directly to ``cherrypy.engine.subscribe``.  Unless you really know what you're doing, this number should be greater than 70 and less than or equal to 100.
+    :param priority: Order in which shutdown functions will be called (lower priority items are called first); this can be any integer and the numbers are used for nothing other than ordering the handlers.
 
 
 .. attribute:: stopped
 
-    ``threading.Event`` which is reset when Sideboard starts and set when it stops; this may be useful with infinitely looping and sleeping in background tasks
+    ``threading.Event`` which is reset when Sideboard starts and set when it stops; this may be useful with looping and sleeping in background tasks you write in your Sideboard plugins
 
 
-.. class:: DaemonTask(func[, interval=1[, threads=1]])
+.. class:: DaemonTask(func[, threads=1[, interval=0.1]])
     
-    This utility class lets you run a function periodically in the background.  This background thread starts and stops automatically when Sideboard starts and stops.  Exceptions are automatically caught and logged.
-        
+    This utility class lets you run a function periodically in the background.  These background daemon threads starts and stops automatically when Sideboard starts and stops.  Exceptions are automatically caught and logged.
+    
     :param func: the function to be executed in the background; this must be callable with no arguments
     :param interval: the number of seconds to wait between function invocations
     :param threads: the number of threads which will call this function; sometimes you may want a pool of threads all calling the same function
 
+    .. attribute:: running
+    
+        boolean indicating whether this ``DaemonTask`` has been started and not yet been stopped; since Sideboard manages the starting and stopping of ``DaemonTask`` instances, you can probably just ignore this attribute
+
+    .. method:: start()
+    
+        Starts a pool of daemon threads for this background task; this is always safe to call even if the threads are already running.
+        
+        Since this is called automatically when Sideboard starts, you can usually just ignore this method.
+    
+    .. method:: stop()
+    
+        Stops the pool of threads for this background task; this is always safe to call even if the threads are already stopped.  This method blocks until all of the threads have stopped, or exits after 5 seconds and logs a warning if any are still running after we've told them to stop.
+        
+        Since this is called automatically when Sideboard stops, you can usually just ignore this method.
+
+
+.. class:: TimeDelayQueue()
+
+    Subclass of `Queue.Queue <http://docs.python.org/2/library/queue.html#Queue.Queue>`_ which adds an optional ``delay`` parameter to the ``put`` method which does not add the item to the queue until after the specified amount of time.  This is used internally but is included in our public API in case it's useful to anyone else.
+
+    .. method:: put(item[, block=True[, timeout=None[, delay=0]]]):
+    
+        Identical to `Queue.put() <http://docs.python.org/2/library/queue.html#Queue.Queue.put>`_ except that there's an extra delay argument; if nonzero then the ``item`` will be added to the queue after ``delay`` seconds.  This method will still return immediately; the item will be added in a background thread.
+
+
+.. class:: Caller(func[, threads=1])
+
+    Utility class allowing code to call the provided function in a separate pool of threads.  For example, if you need to call a long-running function in the handler for an HTTP request, you might want to just kick off the method in a background thread so that you can return from the page handler immediately.
+    
+    >>> caller = Caller(long_running_func)
+    >>> caller.defer('arg1', arg2=True)        # called immediately (in another thread)
+    >>> caller.delay(5, 'argOne', arg2=False)  # called after a 5 second delay (in another thread)
+
+    :param func: the function to be executed in the background; this must be callable with no arguments
+    :param threads: the number of threads which will call this function; sometimes you may want a pool of threads all calling the same function
+
+    This is a subclass of `DaemonTask <#DaemonTask>`_, so it has ``.start()`` and ``.stop()`` methods as well as a ``.running`` attribute which you can probably ignore, since Sideboard manages the starting and stopping of this class' instances.
+
+    .. method:: defer(*args, **kwargs)
+    
+        Pass a set of arguments and keyword arguments which will be used to call this instance's function in a background thread.
+    
+    .. method:: delay(seconds, *args, **kwargs)
+    
+        Call this instance's function in a background thread after the specified delay with the passed position and keyword arguments.
+
+
+.. class:: GenericCaller([threads=1])
+
+    Like the ``Caller`` class above, except that instead of calling the same method with provided arguments, this lets you spin up a pool of background threads which will call any methods you specify, e.g.
+    
+    >>> from __future__ import print_function
+    >>> gc = GenericCaller()
+    >>> gc.defer(print, 'Hello', 'World', sep=', ', end='!')     # prints "Hello, World!"
+    >>> gc.delay(5, print, 'Hello', 'World', sep=', ', end='!')  # prints "Hello, World!" after 5 seconds
+
+    :param threads: the number of threads which will call this function; sometimes you may want a pool of threads all calling the same function
+
+    This is a subclass of `DaemonTask <#DaemonTask>`_, so it has ``.start()`` and ``.stop()`` methods as well as a ``.running`` attribute which you can probably ignore, since Sideboard manages the starting and stopping of this class' instances.
 
 
 Miscellaneous
@@ -741,9 +883,14 @@ Miscellaneous
     ``logging.Logger`` subclass which automatically adds module / class / function names to the log messages.  Plugins should always import and use this logger instead of defining their own or using ``logging.getLogger()``.
 
 
+.. function:: is_listy(x)
+
+    Returns a boolean indicating whether x is "listy", which we define as a sized iterable which is not a map or string.  This is a utility method which we use internally and it was useful enough that it's exposed for plugins to use.  We're not saying it was a mistake to make strings iterable in Python, but sometimes we think it very loudly.
+
+
 .. function:: listify(x)
 
-    returns a list version of x if x is a non-string iterable, otherwise returns a list with x as its only element, for example:
+    returns a list version of x if x is a `listy <#is_listy>`_ iterable, otherwise returns a list with x as its only element, for example:
     
     .. code-block:: none
     
@@ -751,6 +898,11 @@ Miscellaneous
         listify('hello') => ['hello']
         listify([5, 6])  => [5, 6]
         listify((5,))    => [5]
+
+
+.. function:: cached_property
+
+    A decorator for making read-only, `memoized <http://en.wikipedia.org/wiki/Memoization>`_ properties.  This is especially useful when writing properties on SQLAlchemy model classes.
 
 
 .. class:: threadlocal
@@ -786,14 +938,14 @@ Miscellaneous
             {
                 "jsonrpc": "2.0",
                 "id": "106893",
-                "method": "feeds.set_weather_location",
+                "method": "user.set_zip_code",
                 "params": ["20191"],
                 "websocket_client": "client-623"
             }
 
 
 sideboard.lib.sa
--------------
+----------------
 
 Sideboard plugins typically use SQLAlchemy as their ORM; if you don't want to use SQLAlchemy then you can ignore this entire section.  We use the `declarative syntax <http://docs.sqlalchemy.org/en/rel_0_8/orm/extensions/declarative.html>`_ and offer utility methods to make this better.
 
@@ -806,7 +958,7 @@ Sideboard plugins typically use SQLAlchemy as their ORM; if you don't want to us
         
         Serialize this model to a dictionary; by default this will serialize all non-foreign-key attributes.
         
-        :param attrs: a list of which attribute names which should be serialized; this is in the same format as the ``data`` parameter to ``rest.read`` (which will eventually be documented)
+        :param attrs: a list of which attribute names which should be serialized; this is in the same format as the ``data`` parameter to ``crud.read`` (which will eventually be documented)
     
     .. function:: from_dict(attrs)
         
@@ -924,16 +1076,16 @@ SQLAlchemy lets you `write custom column types <http://docs.sqlalchemy.org/en/re
         ``UTCDateTime`` uses `pytz <http://pytz.sourceforge.net/>`_ in its implementation, so if your plugin does not have ``pytz`` installed, this class will not be defined, and trying to import it will raise an ``ImportError``.
 
 
-REST
+CRUD
 ^^^^
 
-.. class:: RestException
+.. class:: CrudException
 
     All exceptions thrown by any rest method are wrapped and re-raised as instances of this class.
 
-.. function:: restable
+.. function:: crudable
 
-.. function:: rest_validation
+.. function:: crud_validation
 
 .. function:: text_length_validation
 

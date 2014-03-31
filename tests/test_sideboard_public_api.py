@@ -18,7 +18,7 @@ def version_contract():
                 'log', 'listify', 'services', 'ConfigurationError', 'parse_config',
                 'threadlocal', 'subscribes', 'notifies', 'notify', 'stopped', 'on_startup',
                 'on_shutdown', 'DaemonTask', 'ajax', 'renders_template', 'render_with_templates',
-                'SubscriptionJsonrpc', 'WebSocket', 'Model', 'Subscription'
+                'WebSocket', 'Model', 'Subscription'
             ],
             sideboard.lib.sa: [
                 'UUID', 'JSON', 'UTCDateTime', 'declarative_base', 'SessionManager',

@@ -6,18 +6,19 @@ import sys
 import socket
 import logging
 from time import sleep
-from Queue import Empty
 from urllib import urlencode
 from random import randrange
 from unittest import TestCase
+from Queue import Queue, Empty
 from contextlib import closing
 from urlparse import urlparse, parse_qsl
 
 import cherrypy
 import requests
 from rpctools.jsonrpc import ServerProxy
+from ws4py.server.cherrypyserver import WebSocketPlugin
 
-from sideboard.lib._cp import _run_startup, _run_shutdown
+import sideboard.websockets
 from sideboard.lib import config, services, WebSocket, cached_property
 from sideboard.internal.imports import use_plugin_virtualenv, _is_plugin_name
 
@@ -132,7 +133,7 @@ class SideboardTest(TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.orig_services = services._services.copy()
+        cls.orig_services = dict(services._services)  # shallow copy
 
     def setUp(self):
         self.configure_db()
@@ -143,16 +144,9 @@ class SideboardTest(TestCase):
 
 @py.test.mark.functional
 class SideboardServerTest(SideboardTest):
-    orig_port = config['cherrypy']['server.socket_port']
-    port = orig_port + 1
-    ws_url = 'ws://localhost:{}/wsrpc'.format(port)
-    jsonrpc_url = 'http://localhost:{}/jsonrpc'.format(port)
+    port = config['cherrypy']['server.socket_port']
+    jsonrpc_url = 'http://127.0.0.1:{}/jsonrpc'.format(port)
     jsonrpc = ServerProxy(jsonrpc_url)
-
-    class WebSocketClient(WebSocket):
-        pass
-
-    WebSocketClient.default_url = ws_url
 
     rsess_username = 'unit_tests'
 
@@ -162,11 +156,20 @@ class SideboardServerTest(SideboardTest):
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind(('0.0.0.0', port))
 
+    @staticmethod
+    def assert_can_connect_to_localhost(port):
+        for i in range(50):
+            try:
+                socket.create_connection(('127.0.0.1', port)).close()
+            except Exception as e:
+                sleep(0.1)
+            else:
+                break
+        else:
+            raise e
+
     @classmethod
     def start_cherrypy(cls):
-        cherrypy.engine.unsubscribe('start', _run_startup)
-        cherrypy.engine.unsubscribe('stop', _run_shutdown)
-
         class Root(object):
             @cherrypy.expose
             def index(self):
@@ -177,58 +180,43 @@ class SideboardServerTest(SideboardTest):
         cherrypy.tree.mount(Root(), '/mock_login')
 
         cls.assert_port_open(cls.port)
-        cherrypy.config.update({
-            'server.socket_port': cls.port,
-            'engine.autoreload_on': False
-        })
+        cherrypy.config.update({'engine.autoreload_on': False})
         cherrypy.engine.start()
         cherrypy.engine.wait(cherrypy.engine.states.STARTED)
+        cls.assert_can_connect_to_localhost(cls.port)
 
     @classmethod
     def stop_cherrypy(cls):
         cherrypy.engine.stop()
         cherrypy.engine.wait(cherrypy.engine.states.STOPPED)
         cherrypy.engine.state = cherrypy.engine.states.EXITING
-        cherrypy.config.update({'server.socket_port': cls.orig_port})
-        cherrypy.engine.subscribe('start', _run_startup, priority=98)
-        cherrypy.engine.subscribe('stop', _run_shutdown, priority=98)
 
-    @classmethod
-    def open_websocket(cls):
-        socket.create_connection(('127.0.0.1', cls.port)).close()
-        cls.ws = cls.WebSocketClient()
-        for i in range(99):
-            if cls.ws.connected:
-                break
-            sleep(0.1)
-
-    @classmethod
-    def close_websocket(cls):
-        cls.ws.close()
+        # ws4py does not support stopping and restarting CherryPy
+        sideboard.websockets.websocket_plugin.unsubscribe()
+        sideboard.websockets.websocket_plugin = WebSocketPlugin(cherrypy.engine)
+        sideboard.websockets.websocket_plugin.subscribe()
 
     @classmethod
     def setUpClass(cls):
         super(SideboardServerTest, cls).setUpClass()
         cls.start_cherrypy()
-        cls.open_websocket()
+        cls.ws = cls.patch_websocket(services.get_websocket())
+        cls.ws.connect(max_wait=5)
+        assert cls.ws.connected
 
     @classmethod
     def tearDownClass(cls):
-        cls.close_websocket()
         cls.stop_cherrypy()
         super(SideboardServerTest, cls).tearDownClass()
 
+    @staticmethod
+    def patch_websocket(ws):
+        ws.q = Queue()
+        ws.fallback = ws.q.put
+        return ws
+
     def setUp(self):
         SideboardTest.setUp(self)
-        self.patch_config(self.ws_url, 'subscription', 'ws_url')
-        self.patch_config(self.jsonrpc_url, 'subscription', 'jsonrpc_url')
-
-    def patch_subscription(self, SubscriptionClass):
-        sub = SubscriptionClass()
-        sub.WebSocketClient = self.WebSocketClient
-        self.addCleanup(sub.disconnect)
-        sub.connect()
-        return sub
 
     @cached_property
     def rsess(self):
@@ -254,25 +242,17 @@ class SideboardServerTest(SideboardTest):
     def get_json(self, path, **params):
         return self._get(self.rsess, path, **params).json()
 
-
-@py.test.mark.functional
-class WebSocketMixin(object):
     def open_ws(self):
-        ws = self.WebSocketClient()
-        self.addCleanup(ws.close)
-        self.wait_for(lambda: ws.connected)
-        ws._checker.stop()
-        ws._dispatcher.stop()
-        return ws
+        return self.patch_websocket(WebSocket(connect_immediately=True, max_wait=5))
 
     def next(self, ws=None, timeout=2):
-        return (ws or self.ws)._dispatcher.q.get(timeout=timeout)[0][0]
+        return (ws or self.ws).q.get(timeout=timeout)
 
     def assert_incoming(self, ws=None, client=None, timeout=1, **params):
         data = self.next(ws, timeout)
-        self.assertEqual(client or self.client, data.get('client'))
+        assert (client or self.client) == data.get('client')
         for key, val in params.items():
-            self.assertEqual(val, data[key])
+            assert val == data[key]
 
     def assert_no_response(self):
         self.assertRaises(Empty, self.next)

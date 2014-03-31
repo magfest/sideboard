@@ -9,7 +9,7 @@ from sqlalchemy.types import Boolean, Integer, UnicodeText
 from sqlalchemy.schema import Column, ForeignKey, UniqueConstraint
 
 from sideboard.lib import log, listify
-from sideboard.tests import SideboardTest, SideboardServerTest, WebSocketMixin
+from sideboard.tests import SideboardTest, SideboardServerTest
 from sideboard.lib.sa._crud import normalize_query, collect_ancestor_classes
 from sideboard.lib.sa import SessionManager, UUID, JSON, declarative_base, CrudException, crudable, text_length_validation, regex_validation
 
@@ -799,7 +799,7 @@ class TestCollectModels(SideboardTest):
         self.assert_models(Account, User, Tag, {'_model': 'Account', 'field': 'user.name.tags'})
 
 
-class TestWebsocketsCrudSubscriptions(SideboardServerTest, WebSocketMixin):
+class TestWebsocketsCrudSubscriptions(SideboardServerTest):
     Session = Session
     
     def setUp(self):

@@ -6,30 +6,10 @@ from time import sleep
 import cherrypy
 
 from sideboard.lib import subscribes, notifies
-from sideboard.tests import SideboardServerTest, WebSocketMixin
-from sideboard.websockets import websocket_plugin, WebSocketDispatcher
+from sideboard.tests import SideboardServerTest
 
 
-class TestWebsocketClose(SideboardServerTest):
-    def test_close(self):
-        self.ws.close()
-        self.wait_for(lambda: not websocket_plugin.pool)
-
-
-class TestWebsocketCloseAll(SideboardServerTest):
-    def test_close_all(self):
-        self.wait_for(lambda: len(websocket_plugin.pool) == 1)
-        server_ws = websocket_plugin.pool.keys()[0]
-        self.assertFalse(server_ws.client_terminated)
-        self.assertFalse(server_ws.server_terminated)
-        self.assertTrue(all(not ws.terminated for ws in websocket_plugin.pool))
-        cherrypy.engine.exit()
-        self.wait_for(lambda: server_ws.terminated)
-        self.wait_for(lambda: not websocket_plugin.pool)
-        self.wait_for(lambda: self.ws.ws.terminated)
-
-
-class TestWebsocketSubscriptions(SideboardServerTest, WebSocketMixin):
+class TestWebsocketSubscriptions(SideboardServerTest):
     def echo(self, s):
         self.echoes.append(s)
         return s
@@ -68,10 +48,8 @@ class TestWebsocketSubscriptions(SideboardServerTest, WebSocketMixin):
 
     def setUp(self):
         SideboardServerTest.setUp(self)
+        self.patch_config(1, 'ws_call_timeout')
         self.override('self', self)
-
-        self.ws.close()
-        self.ws = self.open_ws()
 
         self.echoes = []
         self.places = ['Here']
@@ -221,16 +199,16 @@ class TestWebsocketCall(SideboardServerTest):
         SideboardServerTest.setUp(self)
         self.override('test')
         self.patch_config(1, 'ws_call_timeout')
-    
+
     def fast(self):
         return 'fast'
-    
+
     def slow(self):
         sleep(2)
         return 'slow'
-    
+
     def test_fast(self):
-        self.assertEqual('fast', self.ws.call('test.fast'))
-    
+        assert self.ws.call('test.fast') == 'fast'
+
     def test_slow(self):
         self.assertRaises(Exception, self.ws.call, 'test.slow')

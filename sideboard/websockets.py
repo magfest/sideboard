@@ -15,9 +15,8 @@ import cherrypy
 from ws4py.websocket import WebSocket
 from ws4py.server.cherrypyserver import WebSocketPlugin, WebSocketTool
 
-from sideboard.threads import Caller
-
 import sideboard.lib
+from sideboard.lib import Caller
 from sideboard.config import config
 
 
@@ -245,18 +244,6 @@ class WebSocketDispatcher(WebSocket):
                 websockets.add(websocket)
         return websockets
 
-    @classmethod
-    def get_all(cls):
-        return websocket_plugin.pool.keys()[:]
-
-    @classmethod
-    def close_all(cls):
-        for ws in cls.get_all():
-            try:
-                ws.close()
-            except:
-                pass
-
     def send(self, **message):
         message = {k: v for k, v in message.items() if v is not None}
         if "data" in message and "client" in message:
@@ -394,7 +381,6 @@ class WebSocketChecker(WebSocketTool):
         else:
             return WebSocketTool.upgrade(self, **kwargs)
 
-
 cherrypy.tools.websockets = WebSocketChecker()
 
 websocket_plugin = WebSocketPlugin(cherrypy.engine)
@@ -402,8 +388,3 @@ websocket_plugin.subscribe()
 
 broadcaster = Caller(WebSocketDispatcher.broadcast)
 responder = Caller(WebSocketDispatcher.handle_message, threads=config['ws_thread_pool'])
-
-cherrypy.engine.subscribe("stop", WebSocketDispatcher.close_all)
-for _task in [broadcaster, responder]:
-    cherrypy.engine.subscribe("start", _task.start, priority=99)
-    cherrypy.engine.subscribe("stop", _task.stop)
