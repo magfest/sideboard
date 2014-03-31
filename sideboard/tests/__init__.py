@@ -145,7 +145,7 @@ class SideboardTest(TestCase):
 @py.test.mark.functional
 class SideboardServerTest(SideboardTest):
     port = config['cherrypy']['server.socket_port']
-    jsonrpc_url = 'http://localhost:{}/jsonrpc'.format(port)
+    jsonrpc_url = 'http://127.0.0.1:{}/jsonrpc'.format(port)
     jsonrpc = ServerProxy(jsonrpc_url)
 
     rsess_username = 'unit_tests'
@@ -160,7 +160,7 @@ class SideboardServerTest(SideboardTest):
     def assert_can_connect_to_localhost(port):
         for i in range(50):
             try:
-                socket.create_connection(('localhost', port)).close()
+                socket.create_connection(('127.0.0.1', port)).close()
             except Exception as e:
                 sleep(0.1)
             else:
@@ -228,7 +228,7 @@ class SideboardServerTest(SideboardTest):
     def url(self, path, **query_params):
         params = dict(parse_qsl(urlparse(path).query))
         params.update(query_params)
-        url = 'http://localhost:{}{}'.format(self.port, urlparse(path).path)
+        url = 'http://127.0.0.1:{}{}'.format(self.port, urlparse(path).path)
         if params:
             url += '?' + urlencode(params)
         return url

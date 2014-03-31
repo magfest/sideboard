@@ -416,13 +416,13 @@ class TestServerHelpers(SideboardServerTest):
         super(TestServerHelpers, cls).setUpClass()
     
     def test_url(self):
-        self.assertEqual('http://localhost:8282/foo', self.url('/foo'))
-        self.assertEqual('http://localhost:8282/foo?bar=baz', self.url('/foo?bar=baz'))
-        self.assertEqual('http://localhost:8282/foo?bar=baz', self.url('/foo', bar='baz'))
+        self.assertEqual('http://127.0.0.1:8282/foo', self.url('/foo'))
+        self.assertEqual('http://127.0.0.1:8282/foo?bar=baz', self.url('/foo?bar=baz'))
+        self.assertEqual('http://127.0.0.1:8282/foo?bar=baz', self.url('/foo', bar='baz'))
         try:
-            self.assertEqual('http://localhost:8282/foo?bar=baz&baf=bax', self.url('/foo?bar=baz', baf='bax'))
+            self.assertEqual('http://127.0.0.1:8282/foo?bar=baz&baf=bax', self.url('/foo?bar=baz', baf='bax'))
         except:
-            self.assertEqual('http://localhost:8282/foo?baf=bax&bar=baz', self.url('/foo?bar=baz', baf='bax'))
+            self.assertEqual('http://127.0.0.1:8282/foo?baf=bax&bar=baz', self.url('/foo?bar=baz', baf='bax'))
 
     def test_get(self):
         self.assertEqual(self.rsess_username, self.get('/helper'))
