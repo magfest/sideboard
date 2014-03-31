@@ -5,8 +5,8 @@ omit =
     plugins/conftest.py
     plugins/*/*/tests/*
     tests/plugins/*
-
-include =
-    plugins/*/*/*.py
     sideboard/tests/*
     tests/*
+
+include =
+    sideboard/*
