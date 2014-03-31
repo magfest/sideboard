@@ -1,4 +1,4 @@
-Sideboard
+Sideboard [![Build Status](https://travis-ci.org/appliedsec/sideboard.svg)](https://travis-ci.org/appliedsec/sideboard)
 =========
 
 Getting Started
