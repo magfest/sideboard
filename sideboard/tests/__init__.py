@@ -156,6 +156,18 @@ class SideboardServerTest(SideboardTest):
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind(('0.0.0.0', port))
 
+    @staticmethod
+    def assert_can_connect_to_localhost(port):
+        for i in range(50):
+            try:
+                socket.create_connection(('localhost', port)).close()
+            except Exception as e:
+                sleep(0.1)
+            else:
+                break
+        else:
+            raise e
+
     @classmethod
     def start_cherrypy(cls):
         class Root(object):
@@ -171,6 +183,7 @@ class SideboardServerTest(SideboardTest):
         cherrypy.config.update({'engine.autoreload_on': False})
         cherrypy.engine.start()
         cherrypy.engine.wait(cherrypy.engine.states.STARTED)
+        cls.assert_can_connect_to_localhost(cls.port)
 
     @classmethod
     def stop_cherrypy(cls):

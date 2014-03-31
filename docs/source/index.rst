@@ -61,7 +61,7 @@ Let's start by cloning the Sideboard repo and running it without any plugins:
     $ paver make_sideboard_venv
     $ ./env/bin/python sideboard/run_server.py
 
-Now you can go to `<http://localhost:8282/>`_ and you'll see a page show you Sideboard' version and all of the installed plugins (currently none).
+Now you can go to `<http://localhost:8282/>`_ and you'll see a page show you Sideboard's version and all of the installed plugins (currently none).
 
 So let's create a plugin with paver:
 
@@ -365,52 +365,59 @@ Services
         :param module: the module you are exposing; any function in this module which is not prefixed with an underscore will be callable
         :param namespace: the prefix which consumers calling your method over RPC will use; if omitted this defaults to your module name
 
+        After a module has been exposed, its methods can be called by other plugins, for example
 
-After a module has been exposed, its methods can be called by other plugins, for example
+        .. code-block:: python
 
-.. code-block:: python
+            from sideboard.lib import services
+            news, weather = services.news, services.weather
 
-    from sideboard.lib import services
-    news, weather = services.news, services.weather
-    
-    def get_current_events():
-        return {
-            "news": news.get_headlines(),
-            "weather": weather.current_weather()
-        }
+            def get_current_events():
+                return {
+                    "news": news.get_headlines(),
+                    "weather": weather.current_weather()
+                }
 
-One of the advantagtes of Sideboard is that your code doesn't need to care where the other plugins are installed; they could be either local or remote.  If they're installed on the same machine, then the above code would just work with nothing else needed, and if they're on a different box, you'd need to add the ``rpc_services`` section to your config file:
+        One of the advantagtes of Sideboard is that your code doesn't need to care where the other plugins are installed; they could be either local or remote.  If they're installed on the same machine, then the above code would just work with nothing else needed, and if they're on a different box, you'd need to add the ``rpc_services`` section to your config file:
 
-.. code-block:: none
+        .. code-block:: none
 
-    [rpc_services]
-    foo = example.com
-    bar = example.com
-    baz = secure.com
-    news = secure.com
-    weather = insecure.biz:8080
+            [rpc_services]
+            foo = example.com
+            bar = example.com
+            baz = secure.com
+            news = secure.com
+            weather = insecure.biz:8080
 
-    [[secure.com]]
-    ca = /path/to/ca.pem
-    client_key = /path/to/key.pem
-    client_cert = /path/to/cert.pem
+            [[secure.com]]
+            ca = /path/to/ca.pem
+            client_key = /path/to/key.pem
+            client_cert = /path/to/cert.pem
 
-    [[insecure.biz:8080]]
-    jsonrpc_only = True
-    ca =
-    client_key =
-    client_cert =
+            [[insecure.biz:8080]]
+            jsonrpc_only = True
+            ca =
+            client_key =
+            client_cert =
 
-Note that the rpc_services section contains a mapping of service names to hostnames, and you may optionally add a subsection for each hostname, specifying the client cert information.  If omitted, these values will default to the global values of the same names.  So if you're using the same CA for all of your sideboard apps, you probably won't need to include any subsections.
+        Note that the rpc_services section contains a mapping of service names to hostnames, and you may optionally add a subsection for each hostname, specifying the client cert information.  If omitted, these values will default to the global values of the same names.  So if you're using the same CA for all of your sideboard apps, you probably won't need to include any subsections.
 
-We use websockets as the default RPC mechanism, but you can also use Jsonrpc as a fallback, using the .jsonrpc attribute of sideboard.lib.services.  You can also configure a service to ONLY use jsonrpc using the ``jsonrpc_only`` config value in the subsection for that host; you probably shouldn't do that unless you're connecting to a non-Sideboard service.
+    .. attribute:: jsonrpc
 
->>> from sideboard.lib import services
->>> services.foo.some_func()          # uses websockets
-'Hello World!'
->>> services.foo.jsonrpc.some_func()  # uses jsonrpc
-'Hello World!'
->>> services.weather.some_func()      # uses jsonrpc
+        We use websockets as the default RPC mechanism, but you can also use Jsonrpc as a fallback, using the .jsonrpc attribute of sideboard.lib.services.  You can also configure a service to ONLY use jsonrpc using the ``jsonrpc_only`` config value in the subsection for that host; you probably shouldn't do that unless you're connecting to a non-Sideboard service.
+
+        >>> from sideboard.lib import services
+        >>> services.foo.some_func()          # uses websockets
+        'Hello World!'
+        >>> services.foo.jsonrpc.some_func()  # uses jsonrpc
+        'Hello World!'
+        >>> services.weather.some_func()      # uses jsonrpc
+
+    .. method:: get_websocket(service_name)
+
+        The services API already opens a websocket connection to each remote host which it's been configured to call out to for RPC services.  This method returns the underlying websocket connection for the specified service name, although you probably won't need to access these websocket connections directly, because
+        * if you need to make RPC calls, we recommend just calling into service object methods, e.g. ``services.foo.some_func()``
+        * if you need to make a websocket subscription, we recommend using the `Subscription <#Subscription>`_ class
 
 
 
@@ -562,11 +569,18 @@ WebSocket Utils
 
 Sideboard provides several useful classes for establishing websocket connections to other Sideboard servers, implementing the websocket RPC protocol described in the previous section.
 
-.. class:: WebSocket([url[, ssl_opts={}]])
+.. class:: WebSocket([url[, ssl_opts={}[, connect_immediately=True[, max_wait=2]]]])
     
-    Class representing a persistent websocket connection to the specified url (or connecting to this sideboard instance on localhost if necessary), with an option dictionary of extra keyword arguments to be passed to ssl.wrap_socket, typically client cert parameters.
+    Class representing a persistent websocket connection to the specified url (or connecting to this sideboard instance on localhost if url is omitted), with an option dictionary of extra keyword arguments to be passed to ssl.wrap_socket, typically client cert parameters.
     
-    Instantiating a WebSocket object immediately starts two threads:
+    You probably won't ever need to instantiate this class directly in your production code, but it's used under the hood to implement the `services API <#services>`_ and is very useful for debugging or one-off scripts.
+    
+    :param url: 
+    :param ssl_opts: 
+    :param connect_immediately: 
+    :param max_wait: 
+    
+    Instantiating a WebSocket object immediately starts two threads (unless ``connect_immediately`` is false, in which case this will happen when ``.connect()`` is called):
     
     * a thread which listens on the open connection and dispatches incoming messages
     
@@ -615,6 +629,12 @@ Sideboard provides several useful classes for establishing websocket connections
         
         :param client: the client id being unsubscribed; this is whatever was returned from the ``subscribe`` method
     
+    .. method:: connect([max_wait=0])
+    
+        Starts the two background threads described above.  This method returns immediately unless the ``max_wait`` parameter is specified.  If specified, we will wait for up to that many seconds for the underlying connection to be active.  If that much time elapses without a successful connection, a warning will be logged, but we will still return without raising an exception with the websocket in an unconnected state.
+        
+        This method is safe to call if this websocket is already connected; in that case this method is effectively a noop because nothing will happen.
+    
     .. method:: close()
         
         Closes this connection safely; any errors will be logged and swallowed, so this method will never raise an exception.  Both daemon threads are stopped.
@@ -624,6 +644,13 @@ Sideboard provides several useful classes for establishing websocket connections
     .. attribute:: connected
         
         boolean indicating whether or not this connection is currently active
+
+    .. attribute:: fallback
+    
+        Handler function which is called when we receive a message which is not a response to either a ``call`` or ``subscribe`` RPC message.  By default this just logs an error message.  You can override this by either subclassing this class or simply by setting the attribute to a function which takes a single argument (the message received), e.g.
+        
+        >>> ws = WebSocket()
+        >>> ws.fallback = lambda message: do_something_with(message)
 
 
 .. class:: Subscription(rpc_method, *args, **kwargs)
@@ -756,24 +783,35 @@ When we refer to "Sideboard starting" and "Sideboard stopping" we are referring 
 
 .. attribute:: stopped
 
-    ``threading.Event`` which is reset when Sideboard starts and set when it stops; this may be useful with infinitely looping and sleeping in background tasks
+    ``threading.Event`` which is reset when Sideboard starts and set when it stops; this may be useful with looping and sleeping in background tasks you write in your Sideboard plugins
 
 
-.. class:: DaemonTask(func[, threads=1[, start_now=False]])
+.. class:: DaemonTask(func[, threads=1[, interval=0.1]])
     
-    This utility class lets you run a function periodically in the background.  This background thread starts and stops automatically when Sideboard starts and stops.  Exceptions are automatically caught and logged.
-        
+    This utility class lets you run a function periodically in the background.  These background daemon threads starts and stops automatically when Sideboard starts and stops.  Exceptions are automatically caught and logged.
+    
     :param func: the function to be executed in the background; this must be callable with no arguments
     :param interval: the number of seconds to wait between function invocations
     :param threads: the number of threads which will call this function; sometimes you may want a pool of threads all calling the same function
-    :param start_now: if truthy, start the pool of threads immediately instead of waiting for Sideboard to start; this is unlikely to be what you want, so only pass this if you have a really good reason
+
+    .. attribute:: running
+    
+        boolean indicating whether this ``DaemonTask`` has been started and not yet been stopped; since Sideboard manages the starting and stopping of ``DaemonTask`` instances, you can probably just ignore this attribute
 
     .. method:: start()
     
+        Starts a pool of daemon threads for this background task; this is always safe to call even if the threads are already running.
+        
+        Since this is called automatically when Sideboard starts, you can usually just ignore this method.
+    
     .. method:: stop()
+    
+        Stops the pool of threads for this background task; this is always safe to call even if the threads are already stopped.  This method blocks until all of the threads have stopped, or exits after 5 seconds and logs a warning if any are still running after we've told them to stop.
+        
+        Since this is called automatically when Sideboard stops, you can usually just ignore this method.
 
 
-.. class:: TimeDelayQueue([start_now=False])
+.. class:: TimeDelayQueue()
 
     Subclass of `Queue.Queue <http://docs.python.org/2/library/queue.html#Queue.Queue>`_ which adds an optional ``delay`` parameter to the ``put`` method which does not add the item to the queue until after the specified amount of time.  This is used internally but is included in our public API in case it's useful to anyone else.
 
@@ -782,29 +820,29 @@ When we refer to "Sideboard starting" and "Sideboard stopping" we are referring 
         Identical to `Queue.put() <http://docs.python.org/2/library/queue.html#Queue.Queue.put>`_ except that there's an extra delay argument; if nonzero then the ``item`` will be added to the queue after ``delay`` seconds.  This method will still return immediately; the item will be added in a background thread.
 
 
-.. class:: Caller(func[, threads=1[, start_now=False]])
+.. class:: Caller(func[, threads=1])
 
     Utility class allowing code to call the provided function in a separate pool of threads.  For example, if you need to call a long-running function in the handler for an HTTP request, you might want to just kick off the method in a background thread so that you can return from the page handler immediately.
     
     >>> caller = Caller(long_running_func)
-    >>> caller.start()
     >>> caller.defer('arg1', arg2=True)        # called immediately (in another thread)
     >>> caller.delay(5, 'argOne', arg2=False)  # called after a 5 second delay (in another thread)
 
     :param func: the function to be executed in the background; this must be callable with no arguments
     :param threads: the number of threads which will call this function; sometimes you may want a pool of threads all calling the same function
-    :param start_now: if truthy, start the pool of threads immediately instead of waiting for Sideboard to start; this is unlikely to be what you want, so only pass this if you have a really good reason
 
-    .. method:: start()
-    
-    .. method:: stop()
-    
+    This is a subclass of `DaemonTask <#DaemonTask>`_, so it has ``.start()`` and ``.stop()`` methods as well as a ``.running`` attribute which you can probably ignore, since Sideboard manages the starting and stopping of this class' instances.
+
     .. method:: defer(*args, **kwargs)
     
+        Pass a set of arguments and keyword arguments which will be used to call this instance's function in a background thread.
+    
     .. method:: delay(seconds, *args, **kwargs)
+    
+        Call this instance's function in a background thread after the specified delay with the passed position and keyword arguments.
 
 
-.. class:: GenericCaller([threads=1[, start_now=False]])
+.. class:: GenericCaller([threads=1])
 
     Like the ``Caller`` class above, except that instead of calling the same method with provided arguments, this lets you spin up a pool of background threads which will call any methods you specify, e.g.
     
@@ -814,8 +852,8 @@ When we refer to "Sideboard starting" and "Sideboard stopping" we are referring 
     >>> gc.delay(5, print, 'Hello', 'World', sep=', ', end='!')  # prints "Hello, World!" after 5 seconds
 
     :param threads: the number of threads which will call this function; sometimes you may want a pool of threads all calling the same function
-    :param start_now: if truthy, start the pool of threads immediately instead of waiting for Sideboard to start; this is unlikely to be what you want, so only pass this if you have a really good reason
 
+    This is a subclass of `DaemonTask <#DaemonTask>`_, so it has ``.start()`` and ``.stop()`` methods as well as a ``.running`` attribute which you can probably ignore, since Sideboard manages the starting and stopping of this class' instances.
 
 
 Miscellaneous
@@ -871,7 +909,7 @@ Miscellaneous
             {
                 "jsonrpc": "2.0",
                 "id": "106893",
-                "method": "feeds.set_weather_location",
+                "method": "user.set_zip_code",
                 "params": ["20191"],
                 "websocket_client": "client-623"
             }

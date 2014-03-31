@@ -1,11 +1,12 @@
 from __future__ import unicode_literals
 import os
+import sys
 import json
 from copy import deepcopy
 from itertools import count
 from threading import RLock
-from collections import MutableMapping
 from datetime import datetime, timedelta
+from collections import Mapping, MutableMapping
 
 from ws4py.client.threadedclient import WebSocketClient
 
@@ -41,7 +42,7 @@ class _WebSocketClientDispatcher(WebSocketClient):
     def send(self, data):
         log.debug('sending {!r}', data)
         assert self.connected, 'tried to send data on closed websocket {!r}'.format(self.url)
-        if isinstance(data, dict):
+        if isinstance(data, Mapping):
             data = json.dumps(data)
         return WebSocketClient.send(self, data)
 
@@ -51,7 +52,7 @@ class _WebSocketClientDispatcher(WebSocketClient):
         try:
             message = json.loads(message)
         except:
-            log.warn('failed to parse incoming message', exc_info=True)
+            log.debug('failed to parse incoming message', exc_info=True)
         finally:
             self.dispatcher.defer(message)
 
@@ -110,7 +111,7 @@ class WebSocket(object):
         try:
             self.call(self.poll_method)
         except:
-            log.error('no poll response received from {!r}, closing connection, will attempt to reconnect', self.url, exc_info=True)
+            log.warning('no poll response received from {!r}, closing connection, will attempt to reconnect', self.url, exc_info=True)
             self.ws.close()
         else:
             self._last_poll = datetime.now()
@@ -144,14 +145,14 @@ class WebSocket(object):
             try:
                 return self.ws.send(kwargs)
             except:
-                log.error('failed to send {!r} on {!r}, closing websocket and will attempt to reconnect', kwargs, self.url)
+                log.warn('failed to send {!r} on {!r}, closing websocket and will attempt to reconnect', kwargs, self.url)
                 self.ws.close()
                 raise
 
     def _dispatch(self, message):
         log.debug('dispatching {}', message)
         try:
-            assert isinstance(message, dict), 'incoming message is not a dictionary'
+            assert isinstance(message, Mapping), 'incoming message is not a dictionary'
             assert 'client' in message or 'callback' in message, 'no callback or client in message {}'.format(message)
             id = message.get('client') or message.get('callback')
             assert id in self._callbacks, 'unknown dispatchee {}'.format(id)
@@ -164,8 +165,18 @@ class WebSocket(object):
                 self._callbacks[id]['callback'](message.get('data'))
 
     def fallback(self, message):
-        log.error('no callback registered for message {!r}', message, exc_info=True)
-        raise
+        """
+        Handler method which is called for incoming websocket messages which
+        aren't valid responses to an outstanding call or subscription.  By
+        default this just logs an error message.  You can override this by
+        subclassing this class, or just by assigning a hander method, e.g.
+        
+        >>> ws = WebSocket()
+        >>> ws.fallback = some_handler_function
+        >>> ws.connect()
+        """
+        _, exc, _ = sys.exc_info()
+        log.error('no callback registered for message {!r}, message ignored: {}', message, exc)
 
     @property
     def connected(self):
@@ -173,6 +184,14 @@ class WebSocket(object):
         return bool(self.ws) and self.ws.connected
 
     def connect(self, max_wait=0):
+        """
+        Start the background threads which connect this websocket and handle RPC
+        dispatching.  This method is safe to call even if the websocket is already
+        connected.  You may optionally pass a max_wait parameter if you want to
+        wait for up to that amount of time for the connection to go through; if
+        that amount of time elapses without successfully connecting, a warning
+        message is logged.
+        """
         self._checker.start()
         self._dispatcher.start()
         for i in range(10 * max_wait):
@@ -215,7 +234,7 @@ class WebSocket(object):
         used as the arguments to the remote method.
         """
         client = self._next_id('client')
-        if isinstance(callback, dict):
+        if isinstance(callback, Mapping):
             assert 'callback' in callback and 'errback' in callback, 'callback and errback are required'
             client = callback.setdefault('client', client)
             self._callbacks[client] = callback
