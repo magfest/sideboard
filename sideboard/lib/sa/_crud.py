@@ -157,9 +157,10 @@ import uuid
 import inspect
 import collections
 from copy import deepcopy
-from functools import wraps
-from datetime import datetime, date, time
 from collections import Mapping, defaultdict
+from datetime import datetime, date, time
+from itertools import chain
+from functools import wraps
 
 from sqlalchemy import orm
 from sqlalchemy.orm.mapper import Mapper
@@ -173,7 +174,7 @@ from sqlalchemy.orm.properties import ColumnProperty, RelationshipProperty
 from sqlalchemy.types import Boolean, Text, Integer, String, UnicodeText, DateTime
 from sqlalchemy.sql.expression import alias, cast, label, bindparam, and_, or_, asc, desc, literal, text, union, join
 
-from sideboard.lib import log, notify, listify, threadlocal, serializer
+from sideboard.lib import log, notify, listify, threadlocal, serializer, is_listy
 
 
 class CrudException(Exception):
@@ -438,7 +439,7 @@ def normalize_sort(model, sort):
     
     if isinstance(sort, basestring):
         return [{'field':extract_sort_field(model, sort), 'dir':'asc'}]
-    elif isinstance(sort, (list, set, tuple)):
+    elif is_listy(sort):
         sorters = []
         for s in sort:
             sorters.extend(normalize_sort(model, s)) 
@@ -1153,6 +1154,11 @@ class CrudMixin(object):
         Boolean: 'boolean',
     }
 
+    # override what attribute names will show in the repr (defaults to primary keys and unique constraints)
+    _repr_attr_names = ()
+    # in addition to any default attributes, also show these in the repr
+    _additional_repr_attr_names = ()
+
     @classmethod
     def _get_unique_constraint_column_names(cls):
         """
@@ -1373,13 +1379,12 @@ class CrudMixin(object):
         property = attr.property
         relation_cls = property.mapper.class_
 
-        # e.g., if this a site account, and we're handling the attribute name
-        # "dd_preferences," we want to set the site_account_id on all
-        # dictionary representations of those preferences.
+        # e.g., if this a Team with many Players, and we're handling the attribute name
+        # "players," we want to set the team_id on all dictionary representations of those players.
         backref_id_name = self._get_one_to_many_foreign_key_attr_name_if_applicable(name)
         original_value = getattr(self, name)
 
-        if isinstance(original_value, (list, set, tuple)):
+        if is_listy(original_value):
             new_insts = []
             if value is None:
                 value = []
@@ -1458,6 +1463,42 @@ class CrudMixin(object):
 
     def crud_update(self, **kwargs):
         return self.from_dict(kwargs, validator=_crud_write_validator)
+
+    def __repr__(self):
+        """
+        useful string representation for logging. Reprs do NOT return unicode,
+        since python decodes it using the default encoding:
+        http://bugs.python.org/issue5876
+        """
+        # if no repr attr names have been set, default to the set of all
+        # unique constraints. This is unordered normally, so we'll order and
+        # use it here
+        if not self._repr_attr_names:
+            # this flattens the unique constraint list
+            _unique_attrs = chain.from_iterable(self._get_unique_constraint_column_names())
+            _primary_keys = self._get_primary_key_names()
+
+            attr_names = tuple(sorted(set(chain(_unique_attrs,
+                                                _primary_keys,
+                                                self._additional_repr_attr_names))))
+        else:
+            attr_names = self._repr_attr_names
+
+        if not attr_names and hasattr(self, 'id'):
+            # there should be SOMETHING, so use id as a fallback
+            attr_names = ('id',)
+
+        if attr_names:
+            _kwarg_list = ' '.join('%s=%s' % (name, repr(getattr(self, name, 'undefined')))
+                                   for name in attr_names)
+            kwargs_output = ' %s' % _kwarg_list
+        else:
+            kwargs_output = ''
+
+        # specifically using the string interpolation operator and the repr of
+        # getattr so as to avoid any "hilarious" encode errors for non-ascii
+        # characters
+        return ('<%s%s>' % (self.__class__.__name__, kwargs_output)).encode('utf-8')
 
 
 def _crud_read_validator(self, name):

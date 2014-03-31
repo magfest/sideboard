@@ -15,3 +15,4 @@ plugins/*
 data/sessions/*
 *-bootstrap.py
 data/*.db
+.tox

@@ -3,7 +3,11 @@ from setuptools import setup, find_packages
 
 pkg_name = 'sideboard'
 __here__ = os.path.abspath(os.path.dirname(__file__))
-execfile(os.path.join(__here__, pkg_name, '_version.py'))
+
+# http://stackoverflow.com/a/16084844/171094
+with open(os.path.join(__here__, pkg_name, '_version.py')) as version:
+    exec(version.read())
+# __version__ is now defined
 req_data = open(os.path.join(__here__, 'requirements.txt')).read()
 requires = [r.strip() for r in req_data.split() if r.strip() != '']
 requires = list(reversed(requires))
