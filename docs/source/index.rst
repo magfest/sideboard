@@ -420,6 +420,25 @@ Services
         * if you need to make a websocket subscription, we recommend using the `Subscription <#Subscription>`_ class
 
 
+.. attribute:: serializer
+
+    Our RPC mechanisms are all based on JSON, which means we need some way to serialize non-basic data types.  This does not cover parsing of incoming JSON, but instead only defines how outgoing RPC calls serialize their parameters.  Sideboard registers functions for ``datetime.date`` and ``datetime.datetime`` objects, and plugins may register functions for their own objects.
+
+    .. method:: register(type, preprocessor)
+        
+        Registers a function which pre-processes all objects of the given type, before being serialized to JSON.
+        
+        This method raises an exception if you try to register a preprocessor for a type which already has been registered.
+        
+        :param type: class whose instances should be pre-processed by the provided function
+        :param preprocessor: function which takes a single argument and returns a value which will then be serialized to JSON
+        
+        As an example of how this is used, consider this snippet which Sideboard uses to define how ``datetime.date`` objects should be serialized:
+        
+        .. code-block:: python
+            
+            serializer.register(date, lambda d: d.strftime('%Y-%m-%d'))
+
 
 Configuration
 ^^^^^^^^^^^^^
@@ -575,10 +594,10 @@ Sideboard provides several useful classes for establishing websocket connections
     
     You probably won't ever need to instantiate this class directly in your production code, but it's used under the hood to implement the `services API <#services>`_ and is very useful for debugging or one-off scripts.
     
-    :param url: 
-    :param ssl_opts: 
-    :param connect_immediately: 
-    :param max_wait: 
+    :param url: the ``ws://`` or ``wss://`` url this websocket should connect to; if the url is omitted then we will connect to localhost on the port which Sideboard runs on
+    :param ssl_opts: dictionary of arguments which will be passed to `ssl.wrap_socket() <https://docs.python.org/2/library/ssl.html#ssl.wrap_socket>`_ if this is a secure ``wss://`` connection; this parameter could be used to pass client cert info
+    :param connect_immediately: if True (the default), try to open a connection immediately instead of having the connection opened automatically when Sideboard starts
+    :param max_wait: if ``connect_immediately`` set, this is passed to the ``.connect()`` method of this class
     
     Instantiating a WebSocket object immediately starts two threads (unless ``connect_immediately`` is false, in which case this will happen when ``.connect()`` is called):
     
@@ -602,7 +621,7 @@ Sideboard provides several useful classes for establishing websocket connections
         
         Sometimes you want to make a synchronous call a method over websocket RPC, even though the websocket protocol is asynchronous.  This method sends an RPC message, then waits for a response and returns it when it arrives.
         
-        This method raises an exception if 10 seconds pass without a response, or if we receive an error response to our RPC message.
+        This method raises an exception if 10 seconds pass without a response, or if we receive an error response to our RPC message.  Note that this 10 second time can be overridden in the Sideboard configuration by changing the ``ws_call_timeout`` option.
         
         :param method: the name of the method to call; you may pass either positional or keyword arguments (but not both) to this method which will be sent as part of the RPC message
     
@@ -864,9 +883,14 @@ Miscellaneous
     ``logging.Logger`` subclass which automatically adds module / class / function names to the log messages.  Plugins should always import and use this logger instead of defining their own or using ``logging.getLogger()``.
 
 
+.. function:: is_listy(x)
+
+    Returns a boolean indicating whether x is "listy", which we define as a sized iterable which is not a map or string.  This is a utility method which we use internally and it was useful enough that it's exposed for plugins to use.  We're not saying it was a mistake to make strings iterable in Python, but sometimes we think it very loudly.
+
+
 .. function:: listify(x)
 
-    returns a list version of x if x is a listy iterable, otherwise returns a list with x as its only element, for example:
+    returns a list version of x if x is a `listy <#is_listy>`_ iterable, otherwise returns a list with x as its only element, for example:
     
     .. code-block:: none
     
@@ -874,6 +898,11 @@ Miscellaneous
         listify('hello') => ['hello']
         listify([5, 6])  => [5, 6]
         listify((5,))    => [5]
+
+
+.. function:: cached_property
+
+    A decorator for making read-only, `memoized <http://en.wikipedia.org/wiki/Memoization>`_ properties.  This is especially useful when writing properties on SQLAlchemy model classes.
 
 
 .. class:: threadlocal

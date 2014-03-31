@@ -57,7 +57,7 @@ class serializer(json.JSONEncoder):
     def register(cls, type, preprocessor):
         """
         Associates a type with a preprocessor so that RPC handlers may
-        return non-builtin JSON types.  For example, Sideboard already
+        pass non-builtin JSON types.  For example, Sideboard already
         does the equivalent of
         
         >>> serializer.register(datetime, lambda dt: dt.strftime('%Y-%m-%d %H:%M:%S.%f'))
@@ -78,6 +78,7 @@ serializer.register(datetime, lambda dt: dt.strftime(serializer._datetime_format
 
 
 def cached_property(func):
+    """decorator for making readonly, memoized properties"""
     pname = "_" + func.__name__
     @property
     @wraps(func)
@@ -89,6 +90,10 @@ def cached_property(func):
 
 
 def is_listy(x):
+    """
+    returns a boolean indicating whether the passed object is "listy",
+    which we define as a sized iterable which is not a map or string
+    """
     return isinstance(x, Sized) and isinstance(x, Iterable) and not isinstance(x, (Mapping, type(b''), type('')))
 
 
