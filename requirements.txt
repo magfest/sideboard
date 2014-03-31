@@ -1,5 +1,5 @@
 configobj==5.0.2
-cherrypy==3.2.2
+cherrypy==3.2.5
 python-ldap==2.3.13
 ws4py==0.3.2
 SQLAlchemy==0.8.5
