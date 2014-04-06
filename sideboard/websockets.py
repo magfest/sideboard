@@ -387,4 +387,4 @@ websocket_plugin = WebSocketPlugin(cherrypy.engine)
 websocket_plugin.subscribe()
 
 broadcaster = Caller(WebSocketDispatcher.broadcast)
-responder = Caller(WebSocketDispatcher.handle_message, threads=config['ws_thread_pool'])
+responder = Caller(WebSocketDispatcher.handle_message, threads=config['ws.thread_pool'])

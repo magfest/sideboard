@@ -130,12 +130,12 @@ class SideboardWebSocket(WebSocketDispatcher):
         if ('//' + host) not in origin:
             log.error('Javascript websocket connections must follow same-origin policy; origin {!r} does not match host {!r}', origin, host)
             raise ValueError('Origin and Host headers do not match')
-        
-        if 'username' not in cherrypy.session:
+
+        if config['ws.auth_required'] and 'username' not in cherrypy.session:
             log.warning('websocket connections to this address must have a valid session')
             raise ValueError('you are not logged in')
-        
-        return cherrypy.session['username']
+
+        return cherrypy.session.get('username', '<UNAUTHENTICATED>')
 
 
 class SideboardRpcWebSocket(SideboardWebSocket):

@@ -91,13 +91,13 @@ class WebSocket(object):
 
     @property
     def _should_reconnect(self):
-        interval = min(config['ws_reconnect_interval'], 2 ** self._reconnect_attempts)
+        interval = min(config['ws.reconnect_interval'], 2 ** self._reconnect_attempts)
         cutoff = datetime.now() - timedelta(seconds=interval)
         return not self.connected and (self._reconnect_attempts == 0 or self._last_reconnect_attempt < cutoff)
 
     @property
     def _should_poll(self):
-        cutoff = datetime.now() - timedelta(seconds=config['ws_poll_interval'])
+        cutoff = datetime.now() - timedelta(seconds=config['ws.poll_interval'])
         return self.connected and (self._last_poll is None or self._last_poll < cutoff)
 
     def _check(self):
@@ -286,7 +286,7 @@ class WebSocket(object):
             self._callbacks.pop(callback, None)
             raise
 
-        for i in range(10 * config['ws_call_timeout']):
+        for i in range(10 * config['ws.call_timeout']):
             stopped.wait(0.1)
             if stopped.is_set() or result or error:
                 break

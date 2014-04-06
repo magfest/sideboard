@@ -48,7 +48,7 @@ class TestWebsocketSubscriptions(SideboardServerTest):
 
     def setUp(self):
         SideboardServerTest.setUp(self)
-        self.patch_config(1, 'ws_call_timeout')
+        self.patch_config(1, 'ws.call_timeout')
         self.override('self', self)
 
         self.echoes = []
@@ -198,7 +198,7 @@ class TestWebsocketCall(SideboardServerTest):
     def setUp(self):
         SideboardServerTest.setUp(self)
         self.override('test')
-        self.patch_config(1, 'ws_call_timeout')
+        self.patch_config(1, 'ws.call_timeout')
 
     def fast(self):
         return 'fast'

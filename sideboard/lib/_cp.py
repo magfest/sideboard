@@ -135,7 +135,7 @@ class render_with_templates(object):
                 variable_start_string='$((',
                 variable_end_string='))$',
             )
-            klass.env.filters['jsonify'] = klass.env.filters['safe']
+            klass.env.filters['jsonify'] = lambda x: klass.env.filters['safe'](json.dumps(x))
         for name, func in list(klass.__dict__.items()):
             if hasattr(func, '__call__'):
                 setattr(klass, name, renders_template(func, self.restricted))

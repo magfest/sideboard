@@ -24,7 +24,7 @@ In this tutorial we'll walk through creating an simple web application which exp
 
 There are a lot of websites out there which tell you whether the world has ended, such as
 
-* `HasTheWorldEndedYet.com <http://hastheworldendedyet.com/>`_
+* `HasTheWorldEnded.webs.com <http://hastheworldended.webs.com/>`_
 
 * `HasTheLargeHadronCollidorDestroyedTheWorldYet.com <http://hasthelargehadroncollidordestroyedtheworldyet.com/>`_
 
@@ -74,21 +74,28 @@ This will create the following directory structure in your ``plugins`` directory
 .. code-block:: none
 
     .
-    `-- ragnarok
-        |-- development-defaults.ini
-        |-- ragnarok
-        |   |-- configspec.ini
-        |   |-- __init__.py
-        |   |-- sa.py
-        |   |-- service.py
-        |   |-- templates
-        |   |   `-- index.html
-        |   |-- tests
-        }       `-- __init__.py
-        |   `-- _version.py
-        |-- requirements.txt
-        |-- setup.cfg
-        `-- setup.py
+    |-- development-defaults.ini
+    |-- docs
+    |   |-- _build
+    |   |-- conf.py
+    |   |-- index.rst
+    |   |-- Makefile
+    |   |-- _static
+    |   `-- _templates
+    |-- MANIFEST.in
+    |-- ragnarok
+    |   |-- configspec.ini
+    |   |-- __init__.py
+    |   |-- sa.py
+    |   |-- service.py
+    |   |-- templates
+    |   |   `-- index.html
+    |   |-- tests
+    |   |   `-- __init__.py
+    |   `-- _version.py
+    |-- requirements.txt
+    |-- setup.cfg
+    `-- setup.py
 
 Next we'll make a separate virtualenv for our new plugin:
 
@@ -117,8 +124,12 @@ The default database backend is `SQLite <http://www.sqlite.org/>`_ so we'll keep
         url = Column(Text(), nullable=False)
         search_for = Column(Text(), nullable=False)
         
-        def __repr__(self):
-            return '<{}>'.format(self.url)
+        __table_args__ = (UniqueConstraint('url'),)
+        
+        @property
+        def last_checked(self):
+            if self.results:
+                return max(r.checked for r in self.results)
 
     class Result(Base):
         website_id = Column(UUID(), ForeignKey('website.id', ondelete='CASCADE'), nullable=False)
@@ -138,7 +149,7 @@ In order for that code to work, let's update our imports at the top of the file:
     import sqlalchemy
     from sqlalchemy.orm import relationship
     from sqlalchemy.types import Text, Boolean
-    from sqlalchemy.schema import Column, ForeignKey
+    from sqlalchemy.schema import Column, ForeignKey, UniqueConstraint
 
     from ragnarok import config
     from sideboard.lib.sa import SessionManager, UUID, UTCDateTime, declarative_base
@@ -157,40 +168,38 @@ Now we can run
 
 from our plugin root directory and pytz will be installed.
 
-Now we can play around in the REPL by running ``./env/bin/python`` in the top-level Sideboard directory (not your top-level plugin directory):
+Now we can play around in the REPL by running ``./env/bin/python`` in the top-level Sideboard directory (*not* your top-level plugin directory):
 
+>>> import sideboard
 >>> from ragnarok import sa
 >>> with sa.Session() as session:
-...   session.add(sa.Website(url="http://hastheworldendedyet.com", search_for="not yet"))
+...   session.add(sa.Website(url="http://hastheworldended.webs.com", search_for="NO"))
 ...   session.add(sa.Website(url="http://hasthelargehadroncolliderdestroyedtheworldyet.com", search_for="NOPE"))
 ... 
 >>>
 
-We used our ``Session`` object as a context manager, which committed automatically at the end of the block.  We can confirm this by querying our database:
+We used our ``Session`` object as a context manager, which committed automatically at the end of the block.  We can confirm this by querying our database (note that Sideboard gives us a sensible repr, which by default displays the values of all of the unique columns):
 
 >>> with sa.Session() as session:
 ...   session.query(sa.Website).all()
 ... 
-[<http://hastheworldendedyet.com>, <http://hasthelargehadroncolliderdestroyedtheworldyet.com>]
-
+[<Website id='799cedfd-2255-4f35-87bf-aa4e545131b3' url=u'http://hastheworldended.webs.com'>, <Website id='417c341a-b026-4cdd-8201-2fe904727c20' url=u'http://hasthelargehadroncolliderdestroyedtheworldyet.com'>]
 
 
 Service
 -------
 
-Okay, so we want to write some code that checks these websites, which means we'll need to go through a proxy.  Let's add a proxy url to our settings by opening the file ``ragnarok/configspec.ini`` and adding the following line:
+Okay, so we want to write some code that checks these websites, and we want to be able to configure whether or not it goes through a proxy (as will be the case in many corporate environments).  So let's add a proxy url to our settings by opening the file ``ragnarok/configspec.ini`` and adding the following line:
 
 .. code-block:: none
 
-    proxy = string
+    proxy = string(default="")
 
-This tells our configuration parser that the ``proxy`` setting is required, so we'll add this setting to our development settings by opening the file ``development-defaults.ini`` and adding the following line:
+This tells our configuration parser that there's a ``proxy`` setting which defaults to the empty string.  If you are in an environment that has a proxy, you should add this setting to your development settings by opening the file ``development-defaults.ini`` and adding the following line:
 
 .. code-block:: none
 
-    proxy = "http://proxy1.test.tld/"
-
-When we write our RPM packaging, we'll need to make sure that the config file we include with our RPM includes this setting; otherwise we'll get an error when our config settings are validated because we'll be missing a required config option.
+    proxy = "http://whatever.your.proxy.address.is/"
 
 Now that we've done the necessary database and configuration work, we can write a service to write and expose some methods, so open the file ``ragnarok/service.py`` and replace what's there with the following code:
 
@@ -207,44 +216,52 @@ Now that we've done the necessary database and configuration work, we can write 
         websites = {}
         with sa.Session() as session:
             for website in session.query(sa.Website).all():
-                websites[website.url] = any(r.world_ended for r in website.results)
+                websites[website.url] = {
+                    'result': any(r.world_ended for r in website.results),
+                    'last_checked': website.last_checked
+                }
         return websites
 
     @subscribes('apocalypse')
     def true_or_false():
-        return any(all_checks().values())
+        return any(website['result'] for website in all_checks().values())
 
     @notifies('apocalypse')
-    def _check_for_apocalypse():
+    def check_for_apocalypse():
         rsess = requests.Session()
-        rsess.proxies = {'http': config['proxy'], 'https': config['proxy']}
+        if config['proxy']:
+            rsess.proxies = {'http': config['proxy'], 'https': config['proxy']}
         with sa.Session() as session:
             for website in session.query(sa.Website).all():
                 page = rsess.get(website.url).content
                 ended = website.search_for not in page
                 session.add(sa.Result(website=website, world_ended=ended))
 
-    DaemonTask(_check_for_apocalypse, interval=60*60*24)
+    DaemonTask(check_for_apocalypse, interval=60*60*24)
 
 Here's what we did with the above code:
 
-* implemented a publicly exposed ``all_checks`` function which returns a dictionary mapping website urls to whether or not that website has ever told is that the world has ended
+* implemented a publicly exposed ``all_checks`` function which returns a dictionary mapping website urls to whether or not that website has ever told us that the world has ended as well as the last time that we contacted that website
 
 * implemented a publicly exposed ``true_or_false`` function which returns a bool indicating whether or not any website has ever told us that the world has ended
 
-* implemented a non-exposed (because it starts with an underscore) ``_check_for_apocalypse`` method which goes out through the configured proxy and checks all of the websites and stores the results
+* implemented a ``check_for_apocalypse`` method which goes out through the configured proxy and checks all of the websites and stores the results
 
-* configured a ``DaemonTask`` to automatically execute the ``_check_for_apocalypse`` function once every 24 hours
+* configured a ``DaemonTask`` to automatically execute the ``check_for_apocalypse`` function once every 24 hours
 
-* defined an ``apocalypse`` channel such that if anyone subscribes to the result of the ``all_checks`` or ``true_or_false`` function, then every time the ``_check_for_apocalypse`` function is called, those methods will be re-run and the latest data will be pushed to the clients if the results have changed
+* defined an ``apocalypse`` channel such that if anyone subscribes to the result of the ``all_checks`` or ``true_or_false`` function, then every time the ``check_for_apocalypse`` function is called, those methods will be re-run and the latest data will be pushed to the clients if the results have changed
 
 So let's test out these methods in the REPL by running ``./env/bin/python`` from the top-level Sideboard directory (*not* your top-level plugin directory):
 
 >>> import sideboard
 >>> from ragnarok import service
->>> service._check_for_apocalypse()
->>> service.all_checks()
-{u'http://hastheworldendedyet.com': False, u'http://hasthelargehadroncolliderdestroyedtheworldyet.com': False}
+>>> service.check_for_apocalypse()
+>>> from pprint import pprint
+>>> pprint(service.all_checks())
+{u'http://hasthelargehadroncolliderdestroyedtheworldyet.com': {u'last_checked': datetime.datetime(2014, 4, 6, 4, 49, 12, 688737, tzinfo=<UTC>),
+                                                               u'result': False},
+ u'http://hastheworldended.webs.com': {u'last_checked': datetime.datetime(2014, 4, 6, 4, 49, 12, 687760, tzinfo=<UTC>),
+                                       u'result': False}}
 >>> service.true_or_false()
 False
 
@@ -259,7 +276,7 @@ So let's make a webpage that actually displays this information.  Open the file 
 
 .. code-block:: python
 
-    @render_with_templates(config['template_dir'], restricted=True)
+    @render_with_templates(config['template_dir'])
     class Root(object):
         def index(self):
             return {
@@ -278,55 +295,67 @@ So this sets us up to be able to change our index.html to be a template that use
         </head>
         <body>
             <h1>$(( apocalypse ))$</h1>
-            $(% for website, latest in all_checks.items() %)$
-                <h2>$(( website ))$ - $(( latest ))$</h2>
+            $(% for website, status in all_checks.items() %)$
+                <h2>$(( website ))$ - $(( status.result ))$</h2>
             $(% endfor %)$
         </body>
     </html>
 
 So now we can go back to `<http://localhost:8282/ragnarok/>`_ and see a summary of our end-of-the-world checks.  A few things to note about our latest code:
 
-* Our site is now password-protected with your LDAP creds; we got this by adding the ``restricted=True`` keyword argument to the ``@render_with_templates`` decorator
-
 * We return a dictionary from our page handler; since the page handler is called ``index``, the dictionary it returns is used to render the ``index.html`` `jinja template <http://jinja.pocoo.org/>`_ in our configured templates directory
 
-* Notice that the jinja template tokens are not the default; they have been swapped out so that they do not conflict with `angular <http://angularjs.org/>`_ which is our Javascript framework of choice
+* Notice that the jinja template tokens are not the default; they have been swapped out so that they do not conflict with `angular <http://angularjs.org/>`_ which is our Javascript framework of choice (Sideboard doesn't require you to use Angular but we highly recommend it!)
 
-So let's make this extra-dynamic; we'll use websockets to subscribe to our service so that anytime our data changes, we'll automatically get an update:
+So let's make this extra-dynamic; we'll use websockets to subscribe to our service so that anytime our data changes, we'll automatically get an update.  We're using `Angular <http://angularjs.org/>`_ because Sideboard comes with some WebSocket helpers which are written with Angular.
 
 .. code-block:: html
 
     <!doctype html>
-    <html>
+    <html ng-app="ragnarok">
         <head>
-            <title>Ragnarok Aggregation</title>
-            <script type="text/javascript" src="/static/websockets.js"></script>
-            <script type="text/javascript">
-                SocketManager.subscribe({
-                    method: "ragnarok.true_or_false",
-                    callback: function(world_ended) {
-                        document.getElementById("ended").innerHTML = world_ended;
-                    }
-                });
-                SocketManager.subscribe({
-                    method: "ragnarok.all_checks",
-                    callback: function(websites) {
-                        var html = "";
-                        for(var url in websites) {
-                            html += "<h2>" + url + " => " + websites[url] + "</h2>";
-                        }
-                        document.getElementById("websites").innerHTML = html;
-                    }
-                });
+            <title>Ragnarok Sanity Check</title>
+            <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.2.15/angular.min.js"></script>
+            <script src="/static/angular/sideboard.js"></script>
+            <script>
+                angular.module('ragnarok', ['sideboard'])
+                    .controller('RagnarokCtrl', function ($scope, WebSocketService) {
+                        WebSocketService.subscribe({
+                            method: 'ragnarok.all_checks',
+                            callback: function (allChecks) {
+                                $scope.allChecks = allChecks;
+                            }
+                        });
+                        $scope.refresh = function () {
+                            WebSocketService.call('ragnarok.check_for_apocalypse');
+                        };
+                    });
             </script>
         </head>
-        <body>
-            <h1 id="ended"></h1>
-            <div id="websites"></div>
+        <body ng-controller="RagnarokCtrl">
+            <button ng-click="refresh()">Refresh</button>
+            <table>
+                <tr>
+                    <th>URL</th>
+                    <th>World Ended</th>
+                    <th>Last Updated</th>
+                </tr>
+                <tr ng-repeat="(url, status) in allChecks">
+                    <td>{{ url }}</td>
+                    <td>{{ status.result }}</td>
+                    <td>{{ status.last_checked }}</td>
+                </tr>
+            </table>
         </body>
     </html>
 
-So now we're using our exposed service by using the ``/static/websockets.js`` Javascript library which is included with Sideboard.  Now we can leave this webpage open and anytime our data changes, the latest info on whether the world has ended will automatically be pushed out to us.
+Note that when you press the "Refresh" button the data gets automatically updated even though all we did was make call to the server without doing anything with the response.  That happened because of the following sequence of steps:
+* we subscribe to the ``ragnarok.all_checks`` method when the page loads, so our callback will be called anytime we get a message from the server with new data
+* when the refresh button is pressed, it calls the ``ragnarok.check_for_apocalypse`` method which updates the database
+* because of how we used the ``@subscribes`` and ``@notifies`` decorators on these methods, calling ``check_for_apocalypse`` automatically causes the latest data to be pushed to the client which is subscribed to ``all_checks``
+* our callback is fired again, which updates the data on the scope and the latest data is rendered to the page
+
+Even without pressing the refresh button, the data on this page would still update every 24 hours since we defined that ``DaemonTask`` which calls ``check_for_apocalypse`` once per day.
 
 Since this is our only plugin, we'd probably like this webpage to be the defauly page for this Sideboard site, so let's open our plugin's ``sideboard/configspec.ini`` and add the following line:
 
@@ -334,7 +363,7 @@ Since this is our only plugin, we'd probably like this webpage to be the defauly
 
     default_url = string(default="/ragnarok")
 
-So now if we re-start our web server by re-running ``./env/bin/python sideboard/run_server.py`` and go to `<http://localhost:8282/>`_
+So now if we re-start our web server by re-running ``./env/bin/python sideboard/run_server.py`` and go to `<http://localhost:8282/>`_ we'll be taken directly to this page.
 
 
 
@@ -762,6 +791,55 @@ Here's an example of how these decorators might be used:
         @ajax
         def some_action(self, param):
             return {'data': 'serialized as json'}
+
+
+
+Javascript Libraries
+^^^^^^^^^^^^^^^^^^^^
+
+As mentioned above in the tutorial, Sideboard ships with an Angular module (called ``sideboard``) which provides a ``WebSocketService``.
+
+.. class:: WebSocketService
+
+    .. method:: subscribe(request)
+    
+        Make an RPC call which returns data immediately and also every time the response changes.  This method takes a single argument which is an object with the following fields:
+        
+        :param method: (required) string indicating the service method to call
+        :param params: (optional) this may be an array of arguments, an object of keyword arguments, or a single element which will be passed as a single argument to the method on the server
+        :param client: (optional) if omitted, a new client id will be generated; you should use this if you want to update an existing subscription rather than create a whole new one
+        :param callback: (required) a function which takes a single argument, which is the value of the method response; this callback is invoked every time we get a non-error response to this subscription
+        :param error: (optional) a function which takes a single argument; this is called anytime we get a response to this subscription with an ``error`` attr; this function will be passed that value
+        :returns: a string which is the client id of the new subscription
+        
+        If our connection to the server is ever interrupted, this service will re-fire all subscription requests every time the connection is re-established.
+
+    .. method:: unsubscribe(clientId)
+    
+        Frees the local resources associated with the subscription idenfied by this client id, and sends a message to the server (if our connection is currently open) indicating that we no longer want to receive response messages when the subscription is updated.
+        
+        :param clientId: the value returned by ``.subscribe()`` which uniquely identifies the subscription being canceled
+
+    .. method:: call(method[, *args])
+    
+        Sends a one-time RPC request to the server and returns a `promise <http://docs.angularjs.org/api/ng/service/$q>`_ which may be used to consume the response.  The promise is fulfilled with the value we get back from the server.  It will be rejected if we receive an error message from the server, or if the request times out.
+        
+        This function can be called in one of two ways.  It can take positional arguments, which will be the method and its positional arguments, e.g.
+        
+        .. code-block:: javascript
+        
+            WebSocketService.call('foo.bar', arg1, arg2);
+        
+        or it takes a single object with the following fields:
+        
+        :param method: (required) string value of the method being called
+        :param params: (optional) identical to the ``params`` field passed to ``WebSocketService.subscribe()``; this may be either a single value, an array of positional arguments, or an object of keyword arguments
+        :param timeout: (optional) integer value in milliseconds which will override the default value of 10000 milliseconds (10 seconds)
+
+
+Invoking either ``call`` or ``subscribe`` will automatically open a websocket connection to the server if one is not already active.  Once a connection is open, the service sends periodic poll requests in the background; if no repsonse is received the connection is closed and re-opened; this helps detect early when a connection has gone dead without the actual socket object closing.  If we can't connect to the server, we automatically retry periodically until we succeed.
+
+This service broadcasts a ``WebSocketService.open`` event on ``$rootScope`` every time a connection is successfully opened, and broadcasts a ``WebSocketService.close`` event every time the connection goes dead; this may be useful if your webapp wants to monitor the current connection status to display a warning to the user.
 
 
 
