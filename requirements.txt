@@ -8,7 +8,7 @@ Jinja2==2.6
 rpctools==0.1.0
 logging_unterpolation==0.2.0
 requests==1.2.0
-pytest==2.4.2
+pytest==2.5.2
 mock==1.0.1
 Sphinx==1.2.1
 coverage==3.6

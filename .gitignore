@@ -10,9 +10,11 @@ dist/
 *.pyc
 *.pyo
 development.ini
+sideboard/docs
 plugins/*
 !plugins/conftest.py
 data/sessions/*
 *-bootstrap.py
 data/*.db
 .tox
+node_modules/

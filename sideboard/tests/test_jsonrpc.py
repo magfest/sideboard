@@ -1,82 +1,70 @@
 from __future__ import unicode_literals
 import json
 
-import requests
+import pytest
+import cherrypy
+from mock import Mock
 
-from sideboard.tests import SideboardServerTest
+from sideboard.lib import services
+from sideboard.tests import service_patcher
+from sideboard.jsonrpc import _make_jsonrpc_handler
 
 
-class JsonrpcTest(SideboardServerTest):
-    def get_message(self, name):
-        return 'Hello {}!'.format(name)
+@pytest.fixture
+def precall():
+    return Mock()
 
-    def setUp(self):
-        SideboardServerTest.setUp(self)
-        self.override('testservice', self)
+@pytest.fixture
+def raw_jsonrpc(service_patcher, precall, monkeypatch):
+    service_patcher('test', {'get_message': lambda name: 'Hello {}!'.format(name)})
+    def caller(parsed):
+        cherrypy.request.json = parsed
+        result = _make_jsonrpc_handler(services.get_services(), precall=precall)(self=None)
+        return result
+    return caller
 
-    def send_json(self, body, content_type='application/json'):
-        if isinstance(body, dict):
-            body['id'] = self._testMethodName
-        resp = requests.post(self.jsonrpc_url, data=json.dumps(body),
-                             headers={'Content-Type': 'application/json'})
-        self.assertTrue(resp.json, resp.text)
-        return resp.json()
-
-    def send_jsonrpc(self, method, *args, **kwargs):
-        return self.send_json({
+@pytest.fixture
+def jsonrpc(raw_jsonrpc):
+    def caller(method, *args, **kwargs):
+        return raw_jsonrpc({
             'method': method,
-            'params': args or kwargs
+            'params': kwargs or list(args)
         })
+    return caller
 
-    def assertError(self, error, response):
-        self.assertEqual(self._testMethodName, response['id'])
-        self.assertIn(error, response['error']['message'])
+def test_precall(jsonrpc, precall):
+    jsonrpc('test.get_message', 'World')
+    assert precall.called
 
-    def test_rpctools(self):
-        self.assertEqual('Hello World!',
-                         self.jsonrpc.testservice.get_message('World'))
+def test_valid_args(jsonrpc):
+    assert jsonrpc('test.get_message', 'World')['result'] == 'Hello World!'
 
-    def test_valid_args(self):
-        response = self.send_jsonrpc('testservice.get_message', 'World')
-        self.assertEqual('Hello World!', response['result'])
+def test_valid_kwargs(jsonrpc):
+    assert jsonrpc('test.get_message', name='World')['result'] == 'Hello World!'
 
-    def test_valid_kwargs(self):
-        response = self.send_jsonrpc('testservice.get_message', name='World')
-        self.assertEqual('Hello World!', response['result'])
+def test_non_object(raw_jsonrpc):
+    response = raw_jsonrpc('not actually json')
+    assert 'invalid json input' in response['error']['message']
 
-    def test_non_object(self):
-        response = self.send_json('not the expected json object')
-        self.assertIn('invalid json input', response['error']['message'])
+def test_no_method(raw_jsonrpc):
+    assert '"method" field required' in raw_jsonrpc({})['error']['message']
 
-    def test_no_method(self):
-        self.assertError('"method" field required', self.send_json({}))
+def test_invalid_method(jsonrpc):
+    assert 'invalid method' in jsonrpc('')['error']['message']
+    assert 'invalid method' in jsonrpc('no_module')['error']['message']
+    assert 'invalid method' in jsonrpc('too.many.modules')['error']['message']
 
-    def test_content_types(self):
-        for ct in ('text/html', 'text/plain', 'application/javascript', 'text/javascript', 'image/gif'):
-            res = self.send_json(
-                {'method': 'testservice.get_message', 'params': ['World']},
-                content_type=ct)
-            self.assertEqual('Hello World!', res['result'],
-                             'Expected success with valid reqeust using Content-Type %s' % ct)
+def test_missing_module(jsonrpc):
+    assert 'no module' in jsonrpc('invalid.module')['error']['message']
 
-    def test_invalid_method(self):
-        self.assertError('invalid method', self.send_jsonrpc(''))
-        self.assertError('invalid method', self.send_jsonrpc('no_module'))
-        self.assertError('invalid method',
-                         self.send_jsonrpc('too.many.nested.modules'))
+def test_missing_function(jsonrpc):
+    assert 'no function' in jsonrpc('test.does_not_exist')['error']['message']
 
-    def test_missing_module(self):
-        self.assertError('no module', self.send_jsonrpc('invalid.module'))
+def test_invalid_params(raw_jsonrpc):
+    assert 'invalid parameter list' in raw_jsonrpc({
+        'method': 'test.get_message',
+        'params': 'not a list or dict'
+    })['error']['message']
 
-    def test_missing_function(self):
-        self.assertError('no function',
-                         self.send_jsonrpc('testservice.does_not_exist'))
-
-    def test_invalid_params(self):
-        self.assertError('invalid parameter list', self.send_json(
-            {'method': 'testservice.get_message',
-             'params': 'not a list or dict'}))
-
-    def test_exception(self):
-        self.assertError('unexpected error',
-                         self.send_jsonrpc('testservice.get_message'))
+def test_exception(jsonrpc):
+    assert 'unexpected error' in jsonrpc('test.get_message')['error']['message']

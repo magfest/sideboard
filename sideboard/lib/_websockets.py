@@ -91,13 +91,13 @@ class WebSocket(object):
 
     @property
     def _should_reconnect(self):
-        interval = min(config['ws_reconnect_interval'], 2 ** self._reconnect_attempts)
+        interval = min(config['ws.reconnect_interval'], 2 ** self._reconnect_attempts)
         cutoff = datetime.now() - timedelta(seconds=interval)
         return not self.connected and (self._reconnect_attempts == 0 or self._last_reconnect_attempt < cutoff)
 
     @property
     def _should_poll(self):
-        cutoff = datetime.now() - timedelta(seconds=config['ws_poll_interval'])
+        cutoff = datetime.now() - timedelta(seconds=config['ws.poll_interval'])
         return self.connected and (self._last_poll is None or self._last_poll < cutoff)
 
     def _check(self):
@@ -116,6 +116,14 @@ class WebSocket(object):
         else:
             self._last_poll = datetime.now()
 
+    def _refire_subscriptions(self):
+        try:
+            for cb in self._callbacks.values():
+                if 'client' in cb:
+                    self._send(method=cb['method'], params=cb['params'], client=cb['client'])
+        except:
+            pass  # self._send() already closes and logs on error
+
     def _reconnect(self):
         with self._lock:
             assert not self.connected, 'connection is still active'
@@ -128,12 +136,7 @@ class WebSocket(object):
                 self._reconnect_attempts += 1
             else:
                 self._reconnect_attempts = 0
-                try:
-                    for cb in self._callbacks.values():
-                        if 'client' in cb:
-                            self._send(method=cb['method'], params=cb['params'], client=cb['client'])
-                except:
-                    pass  # self.send() already closes and logs on error
+                self._refire_subscriptions()
 
     def _next_id(self, prefix):
         return '{}-{}'.format(prefix, next(self._counter))
@@ -263,8 +266,10 @@ class WebSocket(object):
         >>> ws.unsubscribe(client)
         """
         self._callbacks.pop(client, None)
-        if self.connected:
+        try:
             self._send(action='unsubscribe', client=client)
+        except:
+            pass
 
     def call(self, method, *args, **kwargs):
         """
@@ -286,7 +291,7 @@ class WebSocket(object):
             self._callbacks.pop(callback, None)
             raise
 
-        for i in range(10 * config['ws_call_timeout']):
+        for i in range(10 * config['ws.call_timeout']):
             stopped.wait(0.1)
             if stopped.is_set() or result or error:
                 break

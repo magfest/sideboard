@@ -48,22 +48,19 @@ def _make_jsonrpc_handler(services, debug=config['debug'],
         id = None
 
         def error(code, message):
-            body = {'jsonrpc': '2.0', 'id': id,
-                    'error': {'code': code, 'message': message}}
+            body = {'jsonrpc': '2.0', 'id': id, 'error': {'code': code, 'message': message}}
             log.warn('returning error message: {!r}', body)
             return body
 
         body = cherrypy.request.json
         if not isinstance(body, dict):
-            return error(ERR_INVALID_JSON, 'invalid json input {!r}'.format(
-                cherrypy.request.body))
+            return error(ERR_INVALID_JSON, 'invalid json input {!r}'.format(cherrypy.request.body))
 
         log.debug('jsonrpc request body: {!r}', body)
 
         id, params = body.get('id'), body.get('params', [])
         if 'method' not in body:
-            return error(ERR_INVALID_RPC,
-                         '"method" field required for jsonrpc request')
+            return error(ERR_INVALID_RPC, '"method" field required for jsonrpc request')
 
         method = body['method']
         if method.count('.') != 1:
@@ -78,8 +75,7 @@ def _make_jsonrpc_handler(services, debug=config['debug'],
             return error(ERR_MISSING_FUNC, 'no function ' + method)
 
         if not isinstance(params, (list, dict)):
-            return error(ERR_INVALID_PARAMS,
-                         'invalid parameter list: {!r}'.format(params))
+            return error(ERR_INVALID_PARAMS, 'invalid parameter list: {!r}'.format(params))
 
         args, kwargs = (params, {}) if isinstance(params, list) else ([], params)
 
