@@ -202,7 +202,7 @@ def recursive_coerce(d):
 
 def mount(root, script_name='', config=None):
     assert script_name not in cherrypy.tree.apps, '{} has already been mounted, probably by another plugin'.format(script_name)
-    return orig_mount(root, script_name, recursive_coerce(config))
+    return orig_mount(root, script_name.encode(), recursive_coerce(config))
 
 orig_mount = cherrypy.tree.mount
 cherrypy.tree.mount = mount
