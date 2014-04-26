@@ -7,6 +7,10 @@ from sideboard.lib import log, WebSocket, stopped
 from sideboard.tests import config_patcher
 
 
+@pytest.fixture(autouse=True)
+def reset_stopped():
+    stopped.clear()
+
 @pytest.fixture
 def ws(monkeypatch):
     ws = WebSocket(connect_immediately=False)
