@@ -1,16 +1,14 @@
 from __future__ import unicode_literals
 import json
-from logging import WARNING
-from itertools import count
 from unittest import TestCase
 from datetime import datetime, date
 from collections import Sequence, Set
 
+import pytest
 import cherrypy
 
 from sideboard.lib._services import _Services
-from sideboard.tests import SideboardTest, SideboardServerTest
-from sideboard.lib import Model, WebSocket, subscribes, notifies, serializer, render_with_templates, ajax, threadlocal, is_listy
+from sideboard.lib import Model, serializer, ajax, is_listy
 
 
 class TestServices(TestCase):
@@ -284,71 +282,7 @@ class TestModel(TestCase):
         self.assertEqual(model.dirty, {'extra_data': {'test_foo': 'bar'}})
 
 
-class TestWebSocket(SideboardServerTest):
-    def callee(self):
-        return 'Hello World!'
-
-    @subscribes('test')
-    def subscribee(self):
-        return next(self.counter)
-
-    @notifies('test')
-    def notifier(self):
-        return 'updated'
-
-    def setUp(self):
-        self.results = []
-        self.counter = count()
-        self.override('self', self)
-        self.ws = WebSocket(connect_immediately=True, max_wait=5)
-        assert self.ws.connected
-
-    def test_call_success(self):
-        self.assertEqual('Hello World!', self.ws.call('self.callee'))
-
-    def test_call_invalid(self):
-        self.assertRaises(Exception, self.ws.call, 'self.does_not_exist')
-
-    def test_call_exception(self):
-        message = 'some exception message'
-        try:
-            self.ws.call('self.fail', message)
-        except Exception as e:
-            self.assertIn(message, str(e))
-        else:
-            self.fail('no exception raised')
-
-    def test_call_on_closed(self):
-        self.ws.ws.close()
-        self.assertRaises(Exception, self.ws.call, 'self.callee')
-
-    def test_subscribe_success(self):
-        self.ws.subscribe(self.results.append, 'self.subscribee')
-        self.wait_for_eq([0], lambda: self.results)
-        self.notifier()
-        self.wait_for_eq([0, 1], lambda: self.results)
-
-    def test_subscribe_reconnect_triggering(self):
-        self.ws.subscribe(self.results.append, 'self.subscribee')
-        self.wait_for_eq([0], lambda: self.results)
-        self.ws.ws.close()
-        self.wait_for_eq([0, 1], lambda: self.results)
-
-    def test_subscribe_initial_failure(self):
-        self.ws.ws.close()
-        with self.assert_logged(WARNING, 'initial subscription to self.subscribee at .* failed, will retry on reconnect'):
-            self.ws.subscribe(self.results.append, 'self.subscribee')
-        self.wait_for_eq([0], lambda: self.results)
-
-    def test_subscribe_client(self):
-        client = self.ws.subscribe(self.results.append, 'self.subscribee')
-        self.wait_for_eq([0], lambda: self.results)
-        self.ws._send(method='self.notifier', client=client)
-        self.wait_for_eq([0, 'updated'], lambda: self.results)
-        self.assertRaises(Exception, self.wait_for_ne, [0, 'updated'], lambda: self.results)
-
-
-class TestSerializer(SideboardTest):
+class TestSerializer(TestCase):
     class Foo(object):
         def __init__(self, x):
             self.x = x
@@ -360,25 +294,25 @@ class TestSerializer(SideboardTest):
 
     def test_date(self):
         d = date(2001, 2, 3)
-        self.assertEqual('"2001-02-03"', json.dumps(d, cls=serializer))
+        assert '"2001-02-03"' == json.dumps(d, cls=serializer)
     
     def test_datetime(self):
         dt = datetime(2001, 2, 3, 4, 5, 6)
-        self.assertEqual('"' + dt.strftime(serializer._datetime_format) + '"', json.dumps(dt, cls=serializer))
+        assert '"{}"'.format(dt.strftime(serializer._datetime_format)) == json.dumps(dt, cls=serializer)
     
     def test_duplicate_registration(self):
-        self.assertRaises(Exception, serializer.register, datetime, lambda dt: None)
+        pytest.raises(Exception, serializer.register, datetime, lambda dt: None)
     
     def test_new_type(self):
         serializer.register(self.Foo, lambda foo: foo.x)
-        self.assertEqual('5', json.dumps(self.Foo(5), cls=serializer))
-        self.assertEqual('6', json.dumps(self.Foo(6), cls=serializer))
+        assert '5' == json.dumps(self.Foo(5), cls=serializer)
+        assert '6' == json.dumps(self.Foo(6), cls=serializer)
     
     def test_new_type_subclass(self):
         serializer.register(self.Foo, lambda foo: 'Hello World!')
         serializer.register(self.Bar, lambda bar: 'Hello Kitty!')
-        self.assertEqual('"Hello World!"', json.dumps(self.Foo(5), cls=serializer))
-        self.assertEqual('"Hello Kitty!"', json.dumps(self.Bar(6), cls=serializer))
+        assert '"Hello World!"' == json.dumps(self.Foo(5), cls=serializer)
+        assert '"Hello Kitty!"' == json.dumps(self.Bar(6), cls=serializer)
 
     """
     Here are some cases which are currently undefined (and I'm okay with it):
@@ -398,43 +332,7 @@ class TestSerializer(SideboardTest):
     """
 
 
-class TestServerHelpers(SideboardServerTest):
-    rsess_username = 'helper'
-    
-    @classmethod
-    def setUpClass(cls):
-        @render_with_templates()
-        class Root(object):
-            def index(self):
-                return threadlocal.get('username')
-            
-            @ajax
-            def dynamic(self, hello='world', goodbye='world'):
-                return {'hello': hello, 'goodbye': goodbye}
-        
-        cherrypy.tree.mount(Root(), '/helper')
-        super(TestServerHelpers, cls).setUpClass()
-    
-    def test_url(self):
-        self.assertEqual('http://127.0.0.1:8282/foo', self.url('/foo'))
-        self.assertEqual('http://127.0.0.1:8282/foo?bar=baz', self.url('/foo?bar=baz'))
-        self.assertEqual('http://127.0.0.1:8282/foo?bar=baz', self.url('/foo', bar='baz'))
-        try:
-            self.assertEqual('http://127.0.0.1:8282/foo?bar=baz&baf=bax', self.url('/foo?bar=baz', baf='bax'))
-        except:
-            self.assertEqual('http://127.0.0.1:8282/foo?baf=bax&bar=baz', self.url('/foo?bar=baz', baf='bax'))
-
-    def test_get(self):
-        self.assertEqual(self.rsess_username, self.get('/helper'))
-
-    def test_get_json(self):
-        self.assertEqual({'hello': 'world', 'goodbye': 'world'}, self.get_json('/helper/dynamic'))
-        self.assertEqual({'hello': 'kitty', 'goodbye': 'world'}, self.get_json('/helper/dynamic?hello=kitty'))
-        self.assertEqual({'hello': 'kitty', 'goodbye': 'world'}, self.get_json('/helper/dynamic', hello='kitty'))
-        self.assertEqual({'hello': 'kitty', 'goodbye': 'cruel world'}, self.get_json('/helper/dynamic?hello=kitty', goodbye='cruel world'))
-
-
-class TestIsListy(SideboardTest):
+class TestIsListy(TestCase):
     """
     We test all sequence types, set types, and mapping types listed at
     http://docs.python.org/2/library/stdtypes.html plus a few example
@@ -444,54 +342,50 @@ class TestIsListy(SideboardTest):
     def test_sized_builtin(self):
         for x in [(), (1,), [], [1], set(), set([1]), frozenset(), frozenset([1]),
                   xrange(0), xrange(2), bytearray(), bytearray(1), buffer(''), buffer('x')]:
-            self.assertTrue(is_listy(x))
+            assert is_listy(x)
 
     def test_excluded(self):
-        self.assertFalse(is_listy({}))
-        self.assertFalse(is_listy(''))
-        self.assertFalse(is_listy(b''))
+        assert not is_listy({})
+        assert not is_listy('')
+        assert not is_listy(b'')
 
     def test_unsized_builtin(self):
-        self.assertFalse(is_listy(iter([])))
-        self.assertFalse(is_listy(i for i in range(2)))
+        assert not is_listy(iter([]))
+        assert not is_listy(i for i in range(2))
 
     def test_user_defined_types(self):
-        self.assertFalse(is_listy(Model({}, 'test')))
+        assert not is_listy(Model({}, 'test'))
 
         class AlwaysEmptySequence(Sequence):
             def __len__(self): return 0
             def __getitem__(self, i): return [][i]
 
-        self.assertTrue(is_listy(AlwaysEmptySequence()))
+        assert is_listy(AlwaysEmptySequence())
 
         class AlwaysEmptySet(Set):
             def __len__(self): return 0
             def __iter__(self): return iter([])
             def __contains__(self, x): return False
 
-        self.assertTrue(is_listy(AlwaysEmptySet()))
+        assert is_listy(AlwaysEmptySet())
 
     def test_miscellaneous(self):
         class Foo(object): pass
         
         for x in [0, 1, False, True, Foo, object, object()]:
-            self.assertFalse(is_listy(x))
+            assert not is_listy(x)
 
 
-class TestDoubleMounting(SideboardTest):
-    def test_double_mount(self):
-        class Root(object): pass
-        
-        self.addCleanup(cherrypy.tree.apps.pop, '/test', None)
-        cherrypy.tree.mount(Root(), '/test')
-        self.assertRaises(Exception, cherrypy.tree.mount, Root(), '/test')
+def test_double_mount(request):
+    class Root(object): pass
+    request.addfinalizer(lambda: cherrypy.tree.apps.pop('/test', None))
+    cherrypy.tree.mount(Root(), '/test')
+    pytest.raises(Exception, cherrypy.tree.mount, Root(), '/test')
 
 
-class TestAjaxSerialization(SideboardTest):
-    def test_custom_serialization(self):
-        class Root(object):
-            @ajax
-            def returns_date(self):
-                return date(2001, 2, 3)
-        
-        self.assertEqual('"2001-02-03"', Root().returns_date())
+def test_ajaz_serialization():
+    class Root(object):
+        @ajax
+        def returns_date(self):
+            return date(2001, 2, 3)
+    assert '"2001-02-03"' == Root().returns_date()

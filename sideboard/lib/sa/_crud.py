@@ -642,7 +642,7 @@ def make_crud_service(Session):
             class subscriber(object):
                 @property
                 def subscribes(self):
-                    message = threadlocal.get('message')
+                    message = threadlocal.get('message', {})
                     return Crud._get_models(message.get('params')) if message else []
 
                 def __call__(self, *args, **kwargs):

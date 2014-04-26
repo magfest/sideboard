@@ -116,6 +116,14 @@ class WebSocket(object):
         else:
             self._last_poll = datetime.now()
 
+    def _refire_subscriptions(self):
+        try:
+            for cb in self._callbacks.values():
+                if 'client' in cb:
+                    self._send(method=cb['method'], params=cb['params'], client=cb['client'])
+        except:
+            pass  # self._send() already closes and logs on error
+
     def _reconnect(self):
         with self._lock:
             assert not self.connected, 'connection is still active'
@@ -128,12 +136,7 @@ class WebSocket(object):
                 self._reconnect_attempts += 1
             else:
                 self._reconnect_attempts = 0
-                try:
-                    for cb in self._callbacks.values():
-                        if 'client' in cb:
-                            self._send(method=cb['method'], params=cb['params'], client=cb['client'])
-                except:
-                    pass  # self.send() already closes and logs on error
+                self._refire_subscriptions()
 
     def _next_id(self, prefix):
         return '{}-{}'.format(prefix, next(self._counter))
@@ -263,8 +266,10 @@ class WebSocket(object):
         >>> ws.unsubscribe(client)
         """
         self._callbacks.pop(client, None)
-        if self.connected:
+        try:
             self._send(action='unsubscribe', client=client)
+        except:
+            pass
 
     def call(self, method, *args, **kwargs):
         """
