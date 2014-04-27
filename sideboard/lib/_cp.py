@@ -130,8 +130,8 @@ class render_with_templates(object):
             klass.env = jinja2.Environment(
                 autoescape=_guess_autoescape,
                 loader=jinja2.FileSystemLoader(self.template_dir),
-                block_start_string='$(%',
-                block_end_string='%)$',
+                block_start_string='((%',
+                block_end_string='%))',
                 variable_start_string='$((',
                 variable_end_string='))$',
             )

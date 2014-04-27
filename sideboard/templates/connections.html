@@ -5,13 +5,13 @@
     </head>
     <body>
         <h2 align="center">Sideboard Connection Tests</h2>
-        $(% for service, results in connections.items()|sort %)$
+        ((% for service, results in connections.items()|sort %))
             <h3>$(( service ))$</h3>
             <ul>
-            $(% for line in results %)$
+            ((% for line in results %))
                 <li>$(( line ))$</li>
-            $(% endfor %)$
+            ((% endfor %))
             </ul>
-        $(% endfor %)$
+        ((% endfor %))
     </body>
 </html>
