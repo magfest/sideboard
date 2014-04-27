@@ -206,7 +206,7 @@ describe('WebSocketService', function () {
     describe('unsubscribe', function () {
         beforeEach(function () {
             spyOn(WebSocketService, 'send');
-            WebSocketService.requests = {xxx: {}};
+            WebSocketService.requests = {xxx: {}, zzz: {}};
             WebSocketService.ws = {readyState: WebSocketService.CLOSED};
         });
         afterEach(function () {
@@ -214,7 +214,7 @@ describe('WebSocketService', function () {
             expect($log.error).not.toHaveBeenCalled();
         });
         it('logs an error when passed an invalid request', function () {
-            angular.forEach([undefined, {}, 'yyy', {client: 'yyy'}], function (val) {
+            angular.forEach([undefined, {}, 'yyy', {client: 'yyy'}, ['xxx']], function (val) {
                 WebSocketService.unsubscribe(val);
                 expect($log.error).toHaveBeenCalled();
                 $log.error.reset();
@@ -227,11 +227,11 @@ describe('WebSocketService', function () {
         });
         it('removes a subscription even when the websocket is closed', function () {
             WebSocketService.unsubscribe('xxx');
-            expect(WebSocketService.requests).toEqual({});
+            expect(WebSocketService.requests.xxx).not.toBeDefined();
         });
         it('removes a subscription when passed a full request object', function () {
             WebSocketService.unsubscribe({client: 'xxx'});
-            expect(WebSocketService.requests).toEqual({});
+            expect(WebSocketService.requests.xxx).not.toBeDefined();
         });
         it('sends an unsubscribe request to the server when connection is open', function () {
             angular.forEach(['CONNECTING', 'CLOSING', 'CLOSED'], function (attr) {
@@ -242,7 +242,13 @@ describe('WebSocketService', function () {
             expect(WebSocketService.send).not.toHaveBeenCalled();
             WebSocketService.ws.readyState = WebSocketService.OPEN;
             WebSocketService.unsubscribe('xxx');
-            expect(WebSocketService.send).toHaveBeenCalledWith({action: 'unsubscribe', client: 'xxx'});
+            expect(WebSocketService.send).toHaveBeenCalledWith({action: 'unsubscribe', client: ['xxx']});
+        });
+        it('sends multiple unsubscribe requests when passed multiple clients', function () {
+            WebSocketService.ws.readyState = WebSocketService.OPEN;
+            WebSocketService.unsubscribe('xxx', 'zzz');
+            expect(WebSocketService.send).toHaveBeenCalledWith({action: 'unsubscribe', client: ['xxx', 'zzz']});
+            expect(WebSocketService.requests).toEqual({});
         });
     });
 

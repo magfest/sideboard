@@ -256,6 +256,18 @@ class WebSocketDispatcher(WebSocket):
             except:
                 log.warn('ignoring unexpected trigger error', exc_info=True)
 
+    def client_lock(self, client):
+        ordered_clients = sorted(sideboard.lib.listify(client or []))
+        class MultiLock(object):
+            def __enter__(inner_self):
+                for client in ordered_clients:
+                    self.client_locks[client].acquire()
+            
+            def __exit__(inner_self, *args, **kwargs):
+                for client in reversed(ordered_clients):
+                    self.client_locks[client].release()
+        return MultiLock()
+
     def send(self, **message):
         message = {k: v for k, v in message.items() if v is not None}
         if 'data' in message and 'client' in message:
@@ -284,12 +296,13 @@ class WebSocketDispatcher(WebSocket):
         method = getattr(service, method_name)
         return method
 
-    def unsubscribe(self, client):
-        self.client_locks.pop(client, None)
-        self.cached_queries.pop(client, None)
-        self.cached_fingerprints.pop(client, None)
-        for clients in self.subscriptions.values():
-            clients[self].pop(client, None)
+    def unsubscribe(self, clients):
+        for client in sideboard.lib.listify(clients):
+            self.client_locks.pop(client, None)
+            self.cached_queries.pop(client, None)
+            self.cached_fingerprints.pop(client, None)
+            for clients in self.subscriptions.values():
+                clients[self].pop(client, None)
 
     def unsubscribe_all(self):
         for clients in self.subscriptions.values():
@@ -334,18 +347,18 @@ class WebSocketDispatcher(WebSocket):
             responder.defer(self, fields)
 
     def handle_message(self, message):
+        before = time.time()
         duration, result = None, None
         threadlocal.reset(websocket=self, message=message, username=self.username)
         action, callback, client, method = message.get('action'), message.get('callback'), message.get('client'), message.get('method')
         try:
-            with self.client_locks[client] if client else RLock():
+            with self.client_lock(client):
                 self.internal_action(action, client, callback)
                 if method:
                     func = self.get_method(method)
                     args, kwargs = get_params(message.get('params'))
                     result = self.ERROR
                     try:
-                        before = time.time()
                         result = func(*args, **kwargs)
                         duration = (time.time() - before) if config['debug'] else None
                     finally:

@@ -227,18 +227,22 @@ angular.module('sideboard', [])
                 }
             },
 
-            unsubscribe: function(request) {
-                request = self.objectify(request);
-                if (request.client && self.requests[request.client]) {
-                    if (request.callback) {
-                        $log.warn('ignoring callback field, which is invalid for unsubscribe');
+            unsubscribe: function() {
+                var clients = [];
+                angular.forEach(arguments, function (request) {
+                    request = self.objectify(request);
+                    if (request.client && self.requests[request.client]) {
+                        if (request.callback) {
+                            $log.warn('ignoring callback field, which is invalid for unsubscribe', request);
+                        }
+                        clients.push(request.client);
+                        delete self.requests[request.client];
+                    } else {
+                        $log.error('Unsubscribe called with unknown client id', request);
                     }
-                    if (self.isOpen()) {
-                        self.send({action: 'unsubscribe', client: request.client});
-                    }
-                    delete self.requests[request.client];
-                } else {
-                    $log.error('Unsubscribe called with unknown client id', request);
+                });
+                if (self.isOpen() && clients.length) {
+                    self.send({action: 'unsubscribe', client: clients});
                 }
             },
 
