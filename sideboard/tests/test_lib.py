@@ -8,7 +8,7 @@ import pytest
 import cherrypy
 
 from sideboard.lib._services import _Services
-from sideboard.lib import Model, serializer, ajax, is_listy
+from sideboard.lib import Model, serializer, ajax, is_listy, log
 
 
 class TestServices(TestCase):
@@ -389,3 +389,7 @@ def test_ajaz_serialization():
         def returns_date(self):
             return date(2001, 2, 3)
     assert '"2001-02-03"' == Root().returns_date()
+
+
+def test_trace_logging():
+    log.trace('normally this would be an error')
