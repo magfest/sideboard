@@ -8,6 +8,7 @@ from ws4py.websocket import WebSocket
 from sideboard.lib import log, services, subscribes
 from sideboard.websockets import WebSocketDispatcher, responder, threadlocal
 from sideboard.tests import service_patcher
+from sideboard.tests.test_websocket import ws
 
 
 @pytest.fixture
@@ -214,7 +215,7 @@ def test_update_triggers_no_client(up):
         assert not up.send.called
 
 def test_update_triggers_with_error(up):
-    up.update_triggers('xxx', None, foosub, ('a', 'b'), {'c': 'd'}, up.ERROR, 123)
+    up.update_triggers('xxx', None, foosub, ('a', 'b'), {'c': 'd'}, up.NO_RESPONSE, 123)
     up.update_subscriptions.assert_called_with('xxx', None, ['foo'])
     assert up.cached_queries['xxx'][None] == (foosub, ('a', 'b'), {'c': 'd'})
     assert not up.send.called
@@ -272,13 +273,17 @@ def test_received_non_dict(receiver):
 
 
 @pytest.fixture
-def handler(wsd, service_patcher, monkeypatch):
+def handler(ws, wsd, service_patcher, monkeypatch):
+    service_patcher('remote', ws)
     service_patcher('foo', {
         'bar': Mock(return_value='baz'),
         'err': Mock(side_effect=Exception)
     })
+    ws.subscribe = Mock()
+    ws.unsubscribe = Mock()
+    ws.call = Mock(return_value=12345)
     monkeypatch.setattr(log, 'error', Mock())
-    monkeypatch.setattr(threadlocal, 'reset', Mock())
+    monkeypatch.setattr(threadlocal, 'reset', Mock(side_effect=threadlocal.reset))
     wsd.send = Mock()
     wsd.internal_action = Mock()
     wsd.update_triggers = Mock()
@@ -315,7 +320,7 @@ def test_handle_message_client_error(handler):
     handler.handle_message(message)
     threadlocal.reset.assert_called_with(websocket=handler, message=message, username=handler.username)
     handler.internal_action.assert_called_with(None, 'xxx', None)
-    handler.update_triggers.assert_called_with('xxx', None, services.foo.err, [], {}, handler.ERROR, ANY)
+    handler.update_triggers.assert_called_with('xxx', None, services.foo.err, [], {}, handler.NO_RESPONSE, ANY)
     assert log.error.called
     handler.send.assert_called_with(error=ANY, client='xxx', callback=None)
     assert handler.send.call_count == 1
@@ -325,7 +330,21 @@ def test_handle_message_callback_error(handler):
     handler.handle_message(message)
     threadlocal.reset.assert_called_with(websocket=handler, message=message, username=handler.username)
     handler.internal_action.assert_called_with(None, None, 'xxx')
-    handler.update_triggers.assert_called_with(None, 'xxx', services.foo.err, [], {}, handler.ERROR, ANY)
+    handler.update_triggers.assert_called_with(None, 'xxx', services.foo.err, [], {}, handler.NO_RESPONSE, ANY)
     assert log.error.called
     handler.send.assert_called_with(error=ANY, callback='xxx', client=None)
     assert handler.send.call_count == 1
+
+def test_handle_message_remote_call(handler, ws):
+    message = {'method': 'remote.method', 'callback': 'xxx', 'params': [1, 2]}
+    handler.handle_message(message)
+    ws.call.assert_called_with('remote.method', 1, 2)
+    assert not ws.subscribe.called
+    handler.send.assert_called_with(callback='xxx', data=12345, client=None, _time=ANY)
+
+def test_handle_message_remote_subscribe(handler, ws):
+    message = {'method': 'remote.method', 'client': 'xxx', 'params': [1, 2]}
+    handler.handle_message(message)
+    ws.subscribe.assert_called_with(ANY, 'remote.method', 1, 2)
+    assert not ws.call.called
+    assert not handler.send.called

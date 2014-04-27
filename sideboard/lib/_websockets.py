@@ -57,6 +57,28 @@ class _WebSocketClientDispatcher(WebSocketClient):
             self.dispatcher.defer(message)
 
 
+class _Subscriber(object):
+    def __init__(self, method, client, src_ws, dest_ws):
+        self.src_ws, self.dest_ws, self.method, self.client = src_ws, dest_ws, method, client
+
+    def unsubscribe(self):
+        self.dest_ws.unsubscribe(self.client)
+
+    def callback(self, data):
+        self.src_ws.send(data=data, client=self.client)
+
+    def errback(self, error):
+        self.src_ws.send(error=error, client=self.client)
+
+    def __call__(self, *args, **kwargs):
+        self.dest_ws.subscribe({
+            'client': self.client,
+            'callback': self.callback,
+            'errback': self.errback
+        }, self.method, *args, **kwargs)
+        return self.src_ws.NO_RESPONSE
+
+
 class WebSocket(object):
     """
     Utility class for making websocket connections.  This improves on the ws4py
@@ -309,7 +331,12 @@ class WebSocket(object):
         >>> authenticate('username', 'password')
         True
         """
-        return lambda *args, **kwargs: self.call(method, *args, **kwargs)
+        originating_ws = sideboard.lib.threadlocal.get('websocket')
+        client = sideboard.lib.threadlocal.get('message', {}).get('client')
+        if client and originating_ws:
+            return _Subscriber(client=client, src_ws=originating_ws, dest_ws=self, method=method)
+        else:
+            return lambda *args, **kwargs: self.call(method, *args, **kwargs)
 
 
 class Model(MutableMapping):

@@ -217,8 +217,8 @@ def get_params(params):
 
 
 class WebSocketDispatcher(WebSocket):
-    ERROR = object()
     username = None
+    NO_RESPONSE = object()
     subscriptions = defaultdict(lambda: defaultdict(lambda: defaultdict(set)))
 
     def __init__(self, *args, **kwargs):
@@ -312,7 +312,7 @@ class WebSocketDispatcher(WebSocket):
         if hasattr(function, 'subscribes') and client is not None:
             self.cached_queries[client][callback] = (function, args, kwargs)
             self.update_subscriptions(client, callback, function.subscribes)
-        if client is not None and callback is None and result is not self.ERROR:
+        if client is not None and callback is None and result is not self.NO_RESPONSE:
             self.send(trigger='subscribe', client=client, data=result, _time=duration)
 
     def internal_action(self, action, client, callback):
@@ -343,7 +343,7 @@ class WebSocketDispatcher(WebSocket):
                 if method:
                     func = self.get_method(method)
                     args, kwargs = get_params(message.get('params'))
-                    result = self.ERROR
+                    result = self.NO_RESPONSE
                     try:
                         before = time.time()
                         result = func(*args, **kwargs)
@@ -357,7 +357,7 @@ class WebSocketDispatcher(WebSocket):
             message = (str_content + '\n' + traceback.format_exc()) if config['debug'] else str_content
             self.send(error=message, callback=callback, client=client)
         else:
-            if callback is not None:
+            if callback is not None and result is not self.NO_RESPONSE:
                 self.send(data=result, callback=callback, client=client, _time=duration)
 
     def __repr__(self):

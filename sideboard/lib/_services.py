@@ -13,7 +13,7 @@ class _ServiceDispatcher(object):
     def __getattr__(self, method):
         assert self.name in self.services, '{} is not registered as a service'.format(self.name)
         service = self.services[self.name]
-        func = service.make_caller(method) if isinstance(service, WebSocket) else getattr(service, method, None)
+        func = service.make_caller('{}.{}'.format(self.name, method)) if isinstance(service, WebSocket) else getattr(service, method, None)
         assert func and hasattr(func, '__call__') and not method.startswith('_'), 'no such method {}.{}'.format(self.name, method)
         return func
 
