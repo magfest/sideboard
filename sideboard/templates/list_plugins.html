@@ -8,14 +8,14 @@
         <p><a href="/docs">Sideboard documentation</a></p>
         <p>There are $(( plugins|length ))$ plugins installed</p>
         <table cellspacing="5" cellpadding="5">
-        $(% for path, plugin in plugins.items()|sort %)$
+        ((% for path, plugin in plugins.items()|sort %))
             <tr>
                 <td><ul style="margin:0px"><li/></ul></td>
                 <td><b>$(( plugin.name ))$</b></td>
                 <td>(version $(( plugin.version|default('not specified', true) ))$)</td>
-                <td>$(% for path in plugin.paths %)$ <a href="$(( path ))$/">$(( path ))$</a> $(% endfor %)$</td>
+                <td>((% for path in plugin.paths %)) <a href="$(( path ))$/">$(( path ))$</a> ((% endfor %))</td>
             </tr>
-        $(% endfor %)$
+        ((% endfor %))
         </table>
     </body>
 </html>

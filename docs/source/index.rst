@@ -295,9 +295,9 @@ So this sets us up to be able to change our index.html to be a template that use
         </head>
         <body>
             <h1>$(( apocalypse ))$</h1>
-            $(% for website, status in all_checks.items() %)$
+            ((% for website, status in all_checks.items() %))
                 <h2>$(( website ))$ - $(( status.result ))$</h2>
-            $(% endfor %)$
+            ((% endfor %))
         </body>
     </html>
 
