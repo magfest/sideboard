@@ -286,8 +286,11 @@ class WebSocketDispatcher(WebSocket):
 
     def unsubscribe(self, client):
         self.client_locks.pop(client, None)
-        self.cached_queries.pop(client, None)
         self.cached_fingerprints.pop(client, None)
+        for func, args, kwargs in self.cached_queries[client].values():
+            if hasattr(func, 'unsubscribe'):
+                func.unsubscribe()  # remote subscriptions
+        self.cached_queries.pop(client, None)
         for clients in self.subscriptions.values():
             clients[self].pop(client, None)
 

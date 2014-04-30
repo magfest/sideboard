@@ -124,7 +124,7 @@ def test_unsubscribe_from_nonexistent(wsd):
 def test_unsubscribe(wsd):
     client = 'client-1'
     wsd.client_locks[client] = 'lock'
-    wsd.cached_queries[client] = 'query'
+    wsd.cached_queries[client] = {None: (Mock(), (), {})}
     wsd.cached_fingerprints[client] = 'fingerprint'
     WebSocketDispatcher.subscriptions['foo'] = {wsd: {client: 'subscription'}}
     wsd.unsubscribe(client)
@@ -137,6 +137,14 @@ def test_unsubscribe_all(wsd):
     wsd.unsubscribe_all()
     assert wsd not in WebSocketDispatcher.subscriptions['foo']
     assert wsd not in WebSocketDispatcher.subscriptions['bar']
+
+def test_remote_unsubscribe(wsd, ws):
+    ws.unsubscribe = Mock()
+    threadlocal.reset(websocket=ws, message={'client': 'xxx'})
+    wsd.cached_queries['xxx'] = {None: (ws.make_caller('remote.foo'), (), {})}
+    wsd.unsubscribe('xxx')
+    ws.unsubscribe.assert_called_with('xxx')
+
 
 
 def test_update_subscriptions_with_new_callback(wsd):
@@ -280,7 +288,6 @@ def handler(ws, wsd, service_patcher, monkeypatch):
         'err': Mock(side_effect=Exception)
     })
     ws.subscribe = Mock()
-    ws.unsubscribe = Mock()
     ws.call = Mock(return_value=12345)
     monkeypatch.setattr(log, 'error', Mock())
     monkeypatch.setattr(threadlocal, 'reset', Mock(side_effect=threadlocal.reset))

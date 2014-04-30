@@ -1,9 +1,9 @@
 from __future__ import unicode_literals
 
 import pytest
-from mock import Mock
+from mock import Mock, ANY
 
-from sideboard.lib import log, WebSocket, stopped
+from sideboard.lib import log, WebSocket, threadlocal, stopped
 from sideboard.tests import config_patcher
 
 
@@ -121,3 +121,23 @@ def test_refire_error(refirer):
     refirer._send = Mock(side_effect=Exception)
     refirer._refire_subscriptions()
     assert refirer._send.call_count == 1
+
+
+def test_make_method_caller(ws):
+    ws.call = Mock()
+    func = ws.make_caller('foo.bar')
+    func(1, 2)
+    ws.call.assert_called_with('foo.bar', 1, 2)
+
+def test_make_subscription_caller(ws):
+    orig_ws = Mock(spec=['NO_RESPONSE'])
+    threadlocal.reset(message={'client': 'xxx'}, websocket=orig_ws)
+    func = ws.make_caller('foo.bar')
+    assert func(1, 2) == orig_ws.NO_RESPONSE
+    ws._send.assert_called_with(method='foo.bar', params=(1, 2), client=ANY)
+
+def test_make_subscription_unsubscribe(ws):
+    ws.unsubscribe = Mock()
+    threadlocal.reset(message={'client': 'xxx'}, websocket=Mock(spec=['NO_RESPONSE']))
+    ws.make_caller('foo.bar').unsubscribe()
+    ws.unsubscribe.assert_called_with('xxx')
