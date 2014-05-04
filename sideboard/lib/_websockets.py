@@ -8,6 +8,7 @@ from threading import RLock
 from datetime import datetime, timedelta
 from collections import Mapping, MutableMapping
 
+import six
 from ws4py.client.threadedclient import WebSocketClient
 
 import sideboard.lib
@@ -47,7 +48,7 @@ class _WebSocketClientDispatcher(WebSocketClient):
         return WebSocketClient.send(self, data)
 
     def received_message(self, message):
-        message = str(message)
+        message = message.data if isinstance(message.data, six.text_type) else message.data.decode('utf-8')
         log.debug('received {!r}', message)
         try:
             message = json.loads(message)
@@ -370,8 +371,8 @@ class Model(MutableMapping):
     
     def to_dict(self):
         data = deepcopy(self._data)
-        serialized = {k: v for k,v in data.pop(self._project_key, {}).items()}
-        for k in data.get('extra_data', {}).keys():
+        serialized = {k: v for k, v in data.pop(self._project_key, {}).items()}
+        for k in list(data.get('extra_data', {}).keys()):
             if k.startswith(self._prefix):
                 serialized[k[len(self._prefix):]] = data['extra_data'].pop(k)
             elif k in self._unpromoted:

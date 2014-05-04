@@ -2,8 +2,9 @@ from __future__ import unicode_literals
 import time
 import heapq
 from warnings import warn
-from Queue import Queue, Empty
 from threading import Thread, Timer, Event, Lock
+
+from six.moves.queue import Queue, Empty
 
 from sideboard.lib import log, on_startup, on_shutdown
 

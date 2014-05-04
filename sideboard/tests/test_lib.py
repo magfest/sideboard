@@ -4,6 +4,7 @@ from unittest import TestCase
 from datetime import datetime, date
 from collections import Sequence, Set
 
+import six
 import pytest
 import cherrypy
 
@@ -340,8 +341,11 @@ class TestIsListy(TestCase):
     """
 
     def test_sized_builtin(self):
-        for x in [(), (1,), [], [1], set(), set([1]), frozenset(), frozenset([1]),
-                  xrange(0), xrange(2), bytearray(), bytearray(1), buffer(''), buffer('x')]:
+        sized = [(), (1,), [], [1], set(), set([1]), frozenset(), frozenset([1]),
+                 bytearray(), bytearray(1)]
+        if six.PY2:
+            sized.extend([xrange(0), xrange(2), buffer(''), buffer('x')])
+        for x in sized:
             assert is_listy(x)
 
     def test_excluded(self):

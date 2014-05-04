@@ -2,7 +2,8 @@ from __future__ import unicode_literals
 import os
 import sys
 
-import ldap
+import six
+#import ldap
 import cherrypy
 
 import sideboard
@@ -179,12 +180,12 @@ if config['debug']:
     }
 cherrypy_config = {}
 for setting, value in config['cherrypy'].items():
-    if isinstance(value, basestring):
+    if isinstance(value, six.string_types):
         if value.isdigit():
             value = int(value)
         elif value.lower() in ['true', 'false']:
             value = value.lower() == 'true'
-        else:
+        elif six.PY2:
             value = value.encode('utf-8')
     cherrypy_config[setting] = value
 cherrypy.config.update(cherrypy_config)
@@ -202,7 +203,7 @@ def recursive_coerce(d):
 
 def mount(root, script_name='', config=None):
     assert script_name not in cherrypy.tree.apps, '{} has already been mounted, probably by another plugin'.format(script_name)
-    return orig_mount(root, script_name.encode(), recursive_coerce(config))
+    return orig_mount(root, script_name, recursive_coerce(config))
 
 orig_mount = cherrypy.tree.mount
 cherrypy.tree.mount = mount

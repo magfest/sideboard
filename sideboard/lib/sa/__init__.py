@@ -5,6 +5,7 @@ import re
 import types
 import inspect
 
+import six
 import sqlalchemy
 from sqlalchemy import event
 from sqlalchemy.dialects import sqlite  # TODO: improve our import overrides such that this is no longer necessary
@@ -15,9 +16,10 @@ from sqlalchemy.types import TypeDecorator, String, DateTime, CHAR, Unicode
 
 from sideboard.lib import log, config
 
-__all__ = [b'UUID', b'JSON', b'CoerceUTF8', b'declarative_base', b'SessionManager',
-           b'CrudException', b'crudable', b'crud_validation', b'text_length_validation', b'regex_validation']
-
+__all__ = ['UUID', 'JSON', 'CoerceUTF8', 'declarative_base', 'SessionManager',
+           'CrudException', 'crudable', 'crud_validation', 'text_length_validation', 'regex_validation']
+if six.PY2:
+    __all__ = [s.encode('ascii') for s in __all__]
 
 def _camelcase_to_underscore(value):
     """ Converts camelCase string to underscore_separated (aka joined_lower).
@@ -101,7 +103,7 @@ class JSON(TypeDecorator):
     def process_bind_param(self, value, dialect):
         if value is None:
             return None
-        elif isinstance(value, basestring):
+        elif isinstance(value, six.string_types):
             return value
         else:
             return json.dumps(value)
@@ -165,9 +167,8 @@ class _SessionInitializer(type):
         return SessionClass
 
 
+@six.add_metaclass(_SessionInitializer)
 class SessionManager(object):
-    __metaclass__ = _SessionInitializer
-
     class SessionMixin(object):
         pass
 

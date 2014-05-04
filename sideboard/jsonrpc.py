@@ -18,7 +18,7 @@ ERR_INVALID_JSON = -32700
 # TODO: this is ugly, it relies on the undocumented implementation of json_out so we should probably write our own force_json_out
 def json_handler(*args, **kwargs):
     value = cherrypy.serving.request._json_inner_handler(*args, **kwargs)
-    return json.dumps(value, cls=serializer)
+    return json.dumps(value, cls=serializer).encode('utf-8')
 
 
 def force_json_in():
@@ -35,8 +35,7 @@ def force_json_in():
             raise cherrypy.HTTPError(400, 'Invalid JSON document')
 
 
-cherrypy.tools.force_json_in = cherrypy.Tool('before_request_body',
-                                             force_json_in, priority=30)
+cherrypy.tools.force_json_in = cherrypy.Tool('before_request_body', force_json_in, priority=30)
 
 def _make_jsonrpc_handler(services, debug=config['debug'],
                          precall=lambda body: None,

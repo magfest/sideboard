@@ -145,20 +145,26 @@ def get_plugin_path_extension(plugin_path):
     """
     Given a plugin path, return a list of directories to add to sys.path.
     """
-    venv = get_plugin_site_packages_directory(plugin_path)
-    return [plugin_path, venv] + [join(venv, s) for s in os.listdir(venv)
-                                  if not s.endswith('.pth')]
+    package_dirs = get_plugin_venv_package_directories(plugin_path)
+    return [plugin_path] + package_dirs \
+         + [join(package_dir, package) for package_dir in package_dirs
+                                       for package in os.listdir(package_dir)
+                                       if not package.endswith('.pth')]
 
-
-def get_plugin_site_packages_directory(plugin_path):
+12345678901234567890123456789012345678901234567890123456789012345678901234567890
+def get_plugin_venv_package_directories(plugin_path):
     """
-    Given a plugin path, return the path to its venv's site-packages directory.
+    Given a plugin path, return the list of package directories. On most
+    platforms this will just be its site-packages directory, but on Ubuntu this
+    will also include the dist-packages directory.
     """
-    path = join(plugin_path, 'env', 'lib', 'python{}.{}'.format(*sys.version_info),
-                'site-packages')
-
-    assert os.path.exists(path), 'plugin site-packages path "{}" does not exist'.format(path)
-    return path
+    python = 'python{}.{}'.format(*sys.version_info)
+    paths = [
+        join(plugin_path, 'env', 'lib', python, 'site-packages'),
+        join(plugin_path, 'env', 'local', 'lib', python, 'dist-packages')
+    ]
+    assert os.path.exists(paths[0]), 'plugin site-packages path "{}" does not exist'.format(paths[0])
+    return [p for p in paths if os.path.exists(p)]  
 
 
 def filter_distribute_modules(module_names):
@@ -316,14 +322,14 @@ def _discover_plugins(plugins_dir=config['plugins_dir']):
         plugin_name = os.path.basename(plugin_path)
         plugin_name = plugin_name.replace('-', '_')
         with set_aside(), patch_path(plugin_name, *extra_path), clear_module_cache(plugin_name):
-            site_packages = get_plugin_site_packages_directory(plugin_path)
-            for module_name in filter_distribute_modules(get_modules(site_packages)):
-                if not module_name.startswith(plugin_name):
-                    continue
-                try:
-                    importlib.import_module(module_name)
-                except Exception as e:
-                    handle_exception(e, plugin_name, module_name)
+            for package_dir in get_plugin_venv_package_directories(plugin_path):
+                for module_name in filter_distribute_modules(get_modules(package_dir)):
+                    if not module_name.startswith(plugin_name):
+                        continue
+                    try:
+                        importlib.import_module(module_name)
+                    except Exception as e:
+                        handle_exception(e, plugin_name, module_name)
         ensure_plugin_module_loaded(plugin_name)
 
 

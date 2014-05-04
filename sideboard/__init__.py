@@ -36,7 +36,10 @@ def _check_sometimes_required_options():
 from sideboard.internal.imports import _discover_plugins, _import_overrider
 
 from sideboard.lib import log
-import __builtin__
+try:
+    import builtins
+except:
+    import __builtin__ as builtins
 
 _discover_plugins()
 original_import = __import__
@@ -45,4 +48,4 @@ original_import = __import__
 # can be written that can handle the discovery and all follow-on imports
 # we're intentionally not passing in a reference to an earlier initialized lock because we never
 # expect it to be acquired anywhere else except here
-__builtin__.__import__ = _import_overrider(original_import, threading.RLock())
+builtins.__import__ = _import_overrider(original_import, threading.RLock())

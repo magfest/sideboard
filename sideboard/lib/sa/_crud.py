@@ -162,6 +162,7 @@ from datetime import datetime, date, time
 from itertools import chain
 from functools import wraps
 
+import six
 from sqlalchemy import orm
 from sqlalchemy.orm.mapper import Mapper
 from sqlalchemy import union, select, func
@@ -189,7 +190,7 @@ def listify_with_count(x, count=None):
 
 
 def mappify(value):
-    if isinstance(value, basestring):
+    if isinstance(value, six.string_types):
         return {value: True}
     elif isinstance(value, collections.Mapping):
         return value
@@ -302,7 +303,7 @@ def normalize_object_graph(graph):
     >>> normalize_object_graph({'prop_one':'test_one', 'prop_two':'test_two'})
     {u'prop_two': u'test_two', u'prop_one': u'test_one'}
     """
-    if isinstance(graph, basestring):
+    if isinstance(graph, six.string_types):
         return {graph:True}
     elif isinstance(graph, dict):
         return graph
@@ -334,7 +335,7 @@ def collect_ancestor_classes(cls, terminal_cls=None, module=None):
             module = [module]
         module_strings = []
         for m in module:
-            if isinstance(m, basestring):
+            if isinstance(m, six.string_types):
                 module_strings.append(m)
             else:
                 module_strings.append(m.__name__)
@@ -413,7 +414,7 @@ def extract_sort_field(model, value):
     field = None
     fields = listify(value)
     for f in fields:
-        if isinstance(f, basestring):
+        if isinstance(f, six.string_types):
             parts = f.split('.')
             if len(parts) == 1 and field is None:
                 if not model or (model and hasattr(model, parts[0])):
@@ -423,7 +424,7 @@ def extract_sort_field(model, value):
         else:
             field = f
     
-    if field and isinstance(field, basestring) and model:
+    if field and isinstance(field, six.string_types) and model:
         attr = getattr(model, field)
         if (not (isinstance(attr, InstrumentedAttribute) and isinstance(attr.property, ColumnProperty)) and 
             not isinstance(attr, ClauseElement)):
@@ -434,10 +435,10 @@ def extract_sort_field(model, value):
 
 
 def normalize_sort(model, sort):
-    if sort and isinstance(sort, basestring) and (sort.lstrip()[0] == '[' or sort.lstrip()[0] == '{'):
+    if sort and isinstance(sort, six.string_types) and (sort.lstrip()[0] == '[' or sort.lstrip()[0] == '{'):
         sort = json.loads(sort)
     
-    if isinstance(sort, basestring):
+    if isinstance(sort, six.string_types):
         return [{'field':extract_sort_field(model, sort), 'dir':'asc'}]
     elif is_listy(sort):
         sorters = []
@@ -501,12 +502,12 @@ def normalize_data(data, count=1):
     if not data:
         return listify_with_count(None, count)
     else:
-        if isinstance(data, basestring):
+        if isinstance(data, six.string_types):
             data = [{data:True}]
         elif isinstance(data, collections.Mapping):
             data = [data]
         elif isinstance(data, collections.Iterable):
-            if any(isinstance(element, basestring) for element in data):
+            if any(isinstance(element, six.string_types) for element in data):
                 # this is the singular list of strings case, so wrap it and
                 # go from there
                 data = [data]
@@ -548,14 +549,14 @@ def normalize_query(query, top_level=True, supermodel=None):
     
     queries = []
     for q in query:
-        if isinstance(q, basestring):
+        if isinstance(q, six.string_types):
             queries.append({'_model':q, '_label':q})
         elif isinstance(q, dict):
             if 'distinct' in q:
-                if isinstance(q['distinct'], basestring):
+                if isinstance(q['distinct'], six.string_types):
                     q['distinct'] = [q['distinct']]
             if 'groupby' in q:
-                if isinstance(q['groupby'], basestring):
+                if isinstance(q['groupby'], six.string_types):
                     q['groupby'] = [q['groupby']]
             if 'and' in q or 'or' in q:
                 op = 'or'
@@ -615,7 +616,7 @@ def get_queries(x):
         queries.append(x)
         for e in x.values():
             queries.extend(get_queries(e))
-    return [d for d in queries if isinstance(d.get("_model"), basestring)]
+    return [d for d in queries if isinstance(d.get("_model"), six.string_types)]
 
 
 def crud_exceptions(fn):
@@ -626,10 +627,10 @@ def crud_exceptions(fn):
             return fn(*args, **kwargs)
         except:
             a = [x for x in (args or [])]
-            kw = {k : v for k, v in (kwargs or {}).iteritems()}
+            kw = {k : v for k, v in (kwargs or {}).items()}
             log.error('Error calling {}.{} {!r} {!r}'.format(fn.__module__, fn.__name__, a, kw), exc_info=True)
             exc_class, exc, tb = sys.exc_info()
-            raise CrudException, CrudException(str(exc)), tb
+            raise six.reraise(CrudException, CrudException(str(exc)), tb)
     return wrapped
 
 
@@ -687,7 +688,7 @@ def make_crud_service(Session):
                                         subquery = deepcopy(d[prop_name])
                                         if isinstance(subquery, (list, set, tuple)) and not filter(lambda x: isinstance(x, dict), subquery):
                                             subquery = {i: True for i in subquery}
-                                        elif isinstance(subquery, basestring):
+                                        elif isinstance(subquery, six.string_types):
                                             subquery = {subquery: True}
                                         if isinstance(subquery, dict):
                                             subquery['_model'] = curr_model.__name__
@@ -1005,11 +1006,11 @@ def make_crud_service(Session):
                         result_order[id] = i
                         query_index_table[id] = query_index
 
-                    for model, ids in result_table.iteritems():
+                    for model, ids in result_table.items():
                         result_table[model] = session.query(model).filter(model.id.in_(ids)).all()
 
                     ordered_results = len(result_order) * [None]
-                    for model, instances in result_table.iteritems():
+                    for model, instances in result_table.items():
                         for instance in instances:
                             ordered_results[result_order[instance.id]] = instance
                     results = [r for r in ordered_results if r is not None]
@@ -1138,8 +1139,8 @@ class CrudMixin(object):
     type_map = {}
     type_map_defaults = {
         int: 'int',
-        str: 'string',
-        unicode: 'string',
+        six.binary_type: 'string',
+        six.text_type: 'string',
         float: 'float',
         datetime: 'date',
         date: 'date',
@@ -1202,7 +1203,7 @@ class CrudMixin(object):
         """
         assert len(backref_mapping) <= 1, 'only one backref key is allowed at this time: {}'.format(backref_mapping)
         if backref_mapping:
-            backref_name = backref_mapping.keys()[0]
+            backref_name = list(backref_mapping.keys())[0]
             parent_id = backref_mapping[backref_name]
         else:
             backref_name, parent_id = None, None
@@ -1210,7 +1211,7 @@ class CrudMixin(object):
         id = None
         if isinstance(value, Mapping):
             id = value.get('id', None)
-        elif isinstance(value, basestring):
+        elif isinstance(value, six.string_types):
             id = value
 
         instance = None
@@ -1258,7 +1259,9 @@ class CrudMixin(object):
     @property
     def _type_casts_for_to_dict(self):
         if not hasattr(self, '_to_dict_type_cast_mapping'):
-            self._to_dict_type_cast_mapping = defaultdict(lambda: lambda x: x, dict(CrudMixin.type_casts, **self.type_casts))
+            type_casts = CrudMixin.type_casts.copy()
+            type_casts.update(self.type_casts)
+            self._to_dict_type_cast_mapping = defaultdict(lambda: lambda x: x, type_casts)
         return self._to_dict_type_cast_mapping
 
     def to_dict(self, attrs=None, validator=lambda self, name: True):
@@ -1319,7 +1322,7 @@ class CrudMixin(object):
         # that we don't have dirty state between applying updates to different
         # model objects, we need a fresh copy
         attrs = deepcopy(attrs)
-        for name,value in attrs.iteritems():
+        for name, value in attrs.items():
             if not name.startswith('_') and validator(self, name, value):
                 attr = getattr(self.__class__, name)
                 if isinstance(attr, InstrumentedAttribute) and isinstance(attr.property, RelationshipProperty):
@@ -1389,7 +1392,7 @@ class CrudMixin(object):
             if value is None:
                 value = []
 
-            if isinstance(value, basestring):
+            if isinstance(value, six.string_types):
                 value = [value]
 
             for i in value:
@@ -1412,7 +1415,7 @@ class CrudMixin(object):
                 if new_inst.id is None or new_inst not in relation:
                     relation.append(new_inst)
 
-        elif isinstance(value, (collections.Mapping, basestring)):
+        elif isinstance(value, (collections.Mapping, six.string_types)):
             if backref_id_name is not None and not value.get(backref_id_name):
                 # if this is a dictionary, it's possible we're going to be
                 # creating a new thing, if so, we'll add a backref to the
@@ -1466,8 +1469,8 @@ class CrudMixin(object):
 
     def __repr__(self):
         """
-        useful string representation for logging. Reprs do NOT return unicode,
-        since python decodes it using the default encoding:
+        useful string representation for logging. Reprs do NOT return unicode
+        on Python 2, since python decodes it using the default encoding:
         http://bugs.python.org/issue5876
         """
         # if no repr attr names have been set, default to the set of all
@@ -1498,7 +1501,8 @@ class CrudMixin(object):
         # specifically using the string interpolation operator and the repr of
         # getattr so as to avoid any "hilarious" encode errors for non-ascii
         # characters
-        return ('<%s%s>' % (self.__class__.__name__, kwargs_output)).encode('utf-8')
+        u = '<%s%s>' % (self.__class__.__name__, kwargs_output)
+        return u if six.PY3 else e.encode('utf-8')
 
 
 def _crud_read_validator(self, name):
@@ -1729,7 +1733,7 @@ class crudable(object):
                 if not name.startswith('_'):
                     attr = getattr(cls, name)
                     if (isinstance(attr, (InstrumentedAttribute, property, ClauseElement)) or
-                        isinstance(attr, (int, float, bool, basestring, datetime, date, time, uuid.UUID))):
+                        isinstance(attr, (int, float, bool, datetime, date, time, six.binary_type, six.text_type, uuid.UUID))):
                         read.append(name)
             read = list(set(read))
             for name in read:
@@ -1788,7 +1792,7 @@ class crudable(object):
                     spec_key_name: spec_value
                     # collect each spec_kwarg for all validators of an attribute
                     for crud_validator_dict in getattr(cls, '_validators', {}).get(name, [])
-                    for spec_key_name, spec_value in crud_validator_dict.get('spec_kwargs', {}).iteritems()
+                    for spec_key_name, spec_value in crud_validator_dict.get('spec_kwargs', {}).items()
                 }
                 
                 if field_validator_kwargs:
@@ -1798,7 +1802,7 @@ class crudable(object):
                     field_validator_kwargs.update(self.data_spec[name].get('validators', {}))
                     self.data_spec[name]['validators'] = field_validator_kwargs
 
-                name = unicode(name)
+                name = six.text_type(name)
                 field = deepcopy(self.data_spec.get(name, {}))
                 field['name'] = name
                 try:
@@ -1910,7 +1914,7 @@ class text_length_validation(crud_validation):
         def model_validator(instance, text):
             if not text:
                 return allow_none
-            text_length = len(unicode(text))
+            text_length = len(six.text_type(text))
             return all([min_length is None or text_length >= min_length,
                         max_length is None or text_length <= max_length])
 
