@@ -98,7 +98,7 @@ class SideboardServerTest(TestCase):
 
     def tearDown(self):
         while not self.ws.q.empty():
-            q.get_nowait()
+            self.ws.q.get_nowait()
 
     def wait_for(self, func, *args, **kwargs):
         for i in range(50):
