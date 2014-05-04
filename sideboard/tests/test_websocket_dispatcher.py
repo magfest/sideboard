@@ -131,6 +131,17 @@ def test_unsubscribe(wsd):
     for d in [wsd.client_locks, wsd.cached_queries, wsd.cached_fingerprints, WebSocketDispatcher.subscriptions['foo']]:
         assert client not in d
 
+def test_multi_unsubscribe(wsd):
+    client = ['client-1', 'client-2']
+    wsd.client_locks = {'client-1': 'lock', 'client-2': 'lock'}
+    wsd.cached_fingerprints = {'client-1': 'fingerprint', 'client-2': 'fingerprint'}
+    wsd.cached_queries = {'client-1': {None: (Mock(), (), {})}, 'client-2': {None: (Mock(), (), {})}}
+    WebSocketDispatcher.subscriptions['foo'] = {wsd: {'client-1': 'subscription', 'client-2': 'subscription'}}
+    wsd.unsubscribe(client)
+    for d in [wsd.client_locks, wsd.cached_queries, wsd.cached_fingerprints, WebSocketDispatcher.subscriptions['foo']]:
+        assert 'client-1' not in d
+        assert 'client-2' not in d
+
 def test_unsubscribe_all(wsd):
     assert wsd in WebSocketDispatcher.subscriptions['foo']
     assert wsd in WebSocketDispatcher.subscriptions['bar']

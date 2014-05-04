@@ -671,11 +671,11 @@ Sideboard provides several useful classes for establishing websocket connections
         :param method: the name of the method you want to subscribe to; you may pass either positional or keyword arguments (but not both) to this method which will be sent as part of the RPC message
         :returns: the automatically generated client id; you can pass this to ``unsubscribe`` if you want to keep this connection open but cancel this one subscription
     
-    .. method:: unsubscribe(client)
+    .. method:: unsubscribe(client1[, client2[, ...]])
         
         Send a message to the server indicating that you no longer want to be subscribed to any channels on the specified client.
         
-        :param client: the client id being unsubscribed; this is whatever was returned from the ``subscribe`` method
+        :param client: the client id being unsubscribed; this is whatever was returned from the ``subscribe`` method; this method can be passed any number of client ids as positional arguments
     
     .. method:: connect([max_wait=0])
     
