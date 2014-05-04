@@ -151,7 +151,7 @@ def get_plugin_path_extension(plugin_path):
                                        for package in os.listdir(package_dir)
                                        if not package.endswith('.pth')]
 
-12345678901234567890123456789012345678901234567890123456789012345678901234567890
+
 def get_plugin_venv_package_directories(plugin_path):
     """
     Given a plugin path, return the list of package directories. On most
@@ -316,7 +316,7 @@ def _discover_plugins(plugins_dir=config['plugins_dir']):
     """
     plugin_paths = glob(join(plugins_dir, '*'))
     for plugin_path in plugin_paths:
-        if not os.path.isdir(plugin_path):
+        if not os.path.isdir(plugin_path) and not os.path.split(plugin_path)[-1].startswith('_'):
             continue
         extra_path = get_plugin_path_extension(plugin_path)
         plugin_name = os.path.basename(plugin_path)
