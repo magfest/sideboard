@@ -1,5 +1,4 @@
 from __future__ import unicode_literals
-
 import os
 import unittest
 
@@ -189,61 +188,40 @@ rdf_modules = [
 ]
 
 
-class GetModulesTest(unittest.TestCase):
-    maxDiff = None
+def test_simple_one():
+    assert set(get_modules(path('simple', 'one'))) == set(distribute_modules + pip_modules)
 
-    def test_simple_one(self):
-        self.assertItemsEqual(
-            get_modules(path('simple', 'one')),
-            distribute_modules + pip_modules
-        )
+def test_simple_two():
+    assert set(get_modules(path('simple', 'two'))) == set(pip_modules + ['setuptools'])
 
-    def test_simple_two(self):
-        self.assertItemsEqual(
-            get_modules(path('simple', 'two')),
-            pip_modules + ['setuptools']
-        )
+def test_nested_tree():
+    rewrite_egglink('nested', 'tree')
+    assert set(get_modules(path('nested', 'tree'))) == set([
+        'tree',
+        'tree.leaf1',
+        'tree.branch1',
+        'tree.branch1.leaf2',
+        'tree.branch2',
+        'tree.branch2.branch3',
+        'tree.branch2.branch3.leaf3',
+    ] + pip_modules + distribute_modules)
 
-    def test_nested_tree(self):
-        rewrite_egglink('nested', 'tree')
-        self.assertItemsEqual(
-            get_modules(path('nested', 'tree')),
-            [
-                'tree',
-                'tree.leaf1',
-                'tree.branch1',
-                'tree.branch1.leaf2',
-                'tree.branch2',
-                'tree.branch2.branch3',
-                'tree.branch2.branch3.leaf3',
-            ] + pip_modules + distribute_modules
-        )
+def test_manypackages_multi():
+    rewrite_egglink('manypackages', 'multi')
+    assert set(get_modules(path('manypackages', 'multi'))) == set(pip_modules + distribute_modules + [
+        'configobj',
+        'mock',
+        'validate',
+    ] + paver_modules)
 
-    def test_manypackages_multi(self):
-        rewrite_egglink('manypackages', 'multi')
-        self.assertItemsEqual(
-            get_modules(path('manypackages', 'multi')),
-            pip_modules + distribute_modules + [
-                'configobj',
-                'mock',
-                'validate',
-            ] + paver_modules
-        )
+def test_different_versions_rdflib3_0_0():
+    rewrite_egglink('different_versions', 'rdflib3_0_0')
+    assert set(get_modules(path('different_versions', 'rdflib3_0_0'))) == set(
+        pip_modules + distribute_modules + rdf_modules + ['rdflib3_0_0', 'rdflib.t'])
 
-    def test_different_versions_rdflib3_0_0(self):
-        rewrite_egglink('different_versions', 'rdflib3_0_0')
-        self.assertItemsEqual(
-            get_modules(path('different_versions', 'rdflib3_0_0')),
-            pip_modules + distribute_modules + rdf_modules +
-            ['rdflib3_0_0', 'rdflib.t']
-        )
+def test_different_versions_rdflib3_1_0():
+    rewrite_egglink('different_versions', 'rdflib3_1_0')
+    assert set(get_modules(path('different_versions', 'rdflib3_1_0'))) == set(
+        pip_modules + distribute_modules + rdf_modules + ['rdflib3_1_0'])
 
-    def test_different_versions_rdflib3_1_0(self):
-        rewrite_egglink('different_versions', 'rdflib3_1_0')
-        self.assertItemsEqual(
-            get_modules(path('different_versions', 'rdflib3_1_0')),
-            pip_modules + distribute_modules + rdf_modules +
-            ['rdflib3_1_0']
-        )
-
-    # TODO need source egg other than pip and distribute
+# TODO need source egg other than pip and distribute
