@@ -42,7 +42,7 @@ def patch_session(Session, request):
         request.addfinalizer(lambda: setattr(Session, 'engine', orig_engine))
         request.addfinalizer(lambda: setattr(Session, 'session_factory', orig_factory))
 
-        Session.engine = sqlalchemy.create_engine('sqlite:////tmp/test.db')
+        Session.engine = sqlalchemy.create_engine('sqlite+pysqlite:////tmp/test.db')
         event.listen(Session.engine, 'connect', lambda conn, record: conn.execute('pragma foreign_keys=ON'))
         Session.session_factory = sessionmaker(bind=Session.engine, autoflush=False, autocommit=False)
         Session.initialize_db(drop=True)

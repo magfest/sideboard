@@ -1,7 +1,7 @@
 from __future__ import unicode_literals
+import re
 import json
 import uuid
-import re
 import types
 import inspect
 
@@ -18,8 +18,7 @@ from sideboard.lib import log, config
 
 __all__ = ['UUID', 'JSON', 'CoerceUTF8', 'declarative_base', 'SessionManager',
            'CrudException', 'crudable', 'crud_validation', 'text_length_validation', 'regex_validation']
-if six.PY2:
-    __all__ = [s.encode('ascii') for s in __all__]
+
 
 def _camelcase_to_underscore(value):
     """ Converts camelCase string to underscore_separated (aka joined_lower).
@@ -142,14 +141,15 @@ else:
             if value is not None:
                 return value.replace(tzinfo=UTC)
 
-    __all__.append(b'UTCDateTime')
+    __all__.append('UTCDateTime')
 
 
 def declarative_base(klass):
     class Mixed(klass, CrudMixin):
         pass
 
-    Mixed = declarative.declarative_base(cls=Mixed)
+    constructor = {'constructor': klass.__init__} if '__init__' in klass.__dict__ else {}
+    Mixed = declarative.declarative_base(cls=Mixed, **constructor)
     Mixed.BaseClass = _SessionInitializer.BaseClass = Mixed
     Mixed.__tablename__ = declarative.declared_attr(lambda cls: _camelcase_to_underscore(cls.__name__))
     return Mixed
@@ -232,5 +232,8 @@ class SessionManager(object):
                 return cls.BaseClass.metadata.tables[name]
 
         raise ValueError('Unrecognized model: {}'.format(name))
+
+if six.PY2:
+    __all__ = [s.encode('ascii') for s in __all__]
 
 from sideboard.lib.sa._crud import CrudMixin, make_crud_service, crudable, CrudException, crud_validation, text_length_validation, regex_validation
