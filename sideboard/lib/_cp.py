@@ -1,16 +1,16 @@
 from __future__ import unicode_literals
 import json
-from urllib import quote
 from threading import Event
 from functools import wraps
 from collections import defaultdict
+
+from six.moves.urllib_parse import quote
 
 import jinja2
 import cherrypy
 
 import sideboard.lib
 from sideboard.lib import log
-
 
 _startup_registry = defaultdict(list)
 _shutdown_registry = defaultdict(list)

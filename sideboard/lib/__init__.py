@@ -5,6 +5,8 @@ from functools import wraps
 from datetime import datetime, date
 from collections import Sized, Iterable, Mapping
 
+import six
+
 from sideboard.internal.autolog import log
 from sideboard.config import config, ConfigurationError, parse_config
 from sideboard.lib._cp import stopped, on_startup, on_shutdown, mainloop, ajax, renders_template, render_with_templates
@@ -13,14 +15,16 @@ from sideboard.lib._websockets import WebSocket, Model, Subscription
 from sideboard.websockets import subscribes, notifies, notify, threadlocal
 from sideboard.lib._services import services
 
-__all__ = [b'log',
-           b'services',
-           b'ConfigurationError', b'parse_config',
-           b'stopped', b'on_startup', b'on_shutdown', b'mainloop', b'ajax', b'renders_template', b'render_with_templates',
-           b'DaemonTask', b'Caller', b'GenericCaller', b'TimeDelayQueue',
-           b'WebSocket', b'Model', b'Subscription',
-           b'listify', b'serializer', b'cached_property', b'is_listy', b'entry_point',
-           b'threadlocal', b'subscribes', b'notifies', b'notify']
+__all__ = ['log',
+           'services',
+           'ConfigurationError', 'parse_config',
+           'stopped', 'on_startup', 'on_shutdown', 'mainloop', 'ajax', 'renders_template', 'render_with_templates',
+           'DaemonTask', 'Caller', 'GenericCaller', 'TimeDelayQueue',
+           'WebSocket', 'Model', 'Subscription',
+           'listify', 'serializer', 'cached_property', 'is_listy', 'entry_point',
+           'threadlocal', 'subscribes', 'notifies', 'notify']
+if six.PY2:
+    __all__ = [s.encode('ascii') for s in __all__]
 
 
 def listify(x):

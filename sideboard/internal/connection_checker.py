@@ -1,7 +1,8 @@
 from __future__ import unicode_literals, print_function
 import ssl
 import socket
-from urlparse import urlparse
+
+from six.moves.urllib_parse import urlparse
 
 from sideboard.lib import services, entry_point
 

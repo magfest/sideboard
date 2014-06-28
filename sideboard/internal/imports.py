@@ -1,11 +1,11 @@
 from __future__ import unicode_literals
-
 import os
 import re
 import sys
 import importlib
 from glob import glob
 from os.path import join
+from threading import RLock
 
 from sideboard.config import config
 from sideboard.internal.autolog import log
@@ -16,6 +16,10 @@ _module_cache = {}
 VALID_PYTHON_FILENAME = '^[_A-Za-z][_a-zA-Z0-9]*$'
 
 FORCE_PLUGIN_VERSIONS = {'sideboard.lib.sa', 'sqlalchemy'}
+
+
+class SideboardImportError(ImportError):
+    pass
 
 
 class patch_path(object):
@@ -76,89 +80,103 @@ class set_aside(object):
 class use_plugin_virtualenv(object):
     """
     context-manager to support dispatching dynamic imports to the appropriate plugin virtualenv.
-    The manager is in charge of temporarily overriding sys.path and sys.modules for the life of
-    the manager
+    The manager is in charge of temporarily overriding sys.path and sys.modules on entry and
+    undoing the changes on exit.
     """
+    lock = RLock()
 
-    def __init__(self, plugin_name):
+    def __init__(self, plugin_name=None):
         """
-        :param plugin_name: the name of the plugin whose virtualenv we should activate,
-                            or 'sideboard' in which case this context manager will do nothing
+        :param plugin_name: the name of the plugin whose virtualenv we should activate. If this
+                            is 'sideboard' then this context manager will do nothing.  If this
+                            parameter is omitted, then we attempt to get the current plugin name
+                            from the call stack, and if the call stack does not involve a plugin
+                            then this context manager does nothing.
         """
-        self.plugin_name = plugin_name
+        self.plugin_name = plugin_name or get_current_plugin()
 
     def __enter__(self):
         """
         Temporarily setting sys.path and sys.modules to values that point to the appropriate plugin
         virtualenv ensures that dynamic imports don't try to import from sideboard's virtualenv which
         would either mean we don't find it, or worse find a different version of the module we
-        import
+        import.
 
         If sys.path or sys.modules are modified outside of this context manager, those changes will
         be thrown away
         """
-        if self.plugin_name == 'sideboard':
-            return
-        
-        self._original_path = sys.path
-        self._original_modules = sys.modules.copy()
-        self.original_keys = set(self._original_modules.keys())
+        if self.plugin_name not in ['sideboard', None]:
+            self.lock.acquire()
+            try:
+                self._original_path = sys.path
+                self._original_modules = sys.modules.copy()
+                self.original_keys = set(self._original_modules.keys())
 
-        #TODO: determine if there a sufficiently negative performance implication
-        #      to rethink doing this in recursive imports
-        sys.path = _path_cache[self.plugin_name] + sys.path
+                #TODO: determine if there a sufficiently negative performance
+                #      implication to rethink doing this in recursive imports
+                sys.path = _path_cache[self.plugin_name] + sys.path
 
-        #This really does need to be an update in place.
-        #Setting sys.modules = SOME_NEW_DICTIONARY means that
-        # imports still write to the original sys.modules
-        sys.modules.update(_module_cache[self.plugin_name])
+                # This really does need to be an update in place.
+                # Setting sys.modules = SOME_NEW_DICTIONARY means
+                # imports still write to the original sys.modules
+                sys.modules.update(_module_cache[self.plugin_name])
+            except:
+                self.lock.release()
+                raise
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """
         Put the original sys.path and sys.modules back to not mess up other imports
         """
-        if self.plugin_name == 'sideboard':
-            return
-        
-        difference = set(sys.modules.keys()) - self.original_keys
-        if difference:
-            # we apparently imported something new within the context and we should persist
-            # it to the module cache
-            _module_cache[self.plugin_name].update({k:sys.modules[k] for k in difference})
+        if self.plugin_name not in ['sideboard', None]:
+            try:
+                difference = set(sys.modules.keys()) - self.original_keys
+                if difference:
+                    # we apparently imported something new within the context and we should persist
+                    # it to the module cache
+                    _module_cache[self.plugin_name].update({k:sys.modules[k] for k in difference})
 
-        # sanity check that original sys.modules was not overwritten underneath us
-        assert self.original_keys == set(self._original_modules.keys()), (
-            'DETECTED CHANGE IN SAVED SYS.MODULES REFERENCE')
+                # sanity check that original sys.modules was not overwritten underneath us
+                assert self.original_keys == set(self._original_modules.keys()), \
+                    'DETECTED CHANGE IN SAVED SYS.MODULES REFERENCE'
 
-        sys.path = self._original_path
+                sys.path = self._original_path
 
-        for module_name in difference:
-            # much like in __enter__, we need to update in place
-            # TODO: determine if there's a danger for overwriting a module reference
-            #  in the main sys.modules with a plug-in's version of the same module?
+                for module_name in difference:
+                    # much like in __enter__, we need to update in place
+                    # TODO: determine if there's a danger for overwriting a module reference
+                    #  in the main sys.modules with a plug-in's version of the same module?
 
-            # we explicitly want to error if the module name somehow isn't there
-            del sys.modules[module_name]
-
+                    # we explicitly want to error if the module name somehow isn't there
+                    del sys.modules[module_name]
+            finally:
+                self.lock.release()
 
 def get_plugin_path_extension(plugin_path):
     """
     Given a plugin path, return a list of directories to add to sys.path.
     """
-    venv = get_plugin_site_packages_directory(plugin_path)
-    return [plugin_path, venv] + [join(venv, s) for s in os.listdir(venv)
-                                  if not s.endswith('.pth')]
+    package_dirs = get_plugin_venv_package_directories(plugin_path)
+    return [plugin_path] + package_dirs \
+         + [join(package_dir, package) for package_dir in package_dirs
+                                       for package in os.listdir(package_dir)
+                                       if not package.endswith('.pth')]
 
 
-def get_plugin_site_packages_directory(plugin_path):
+def get_plugin_venv_package_directories(plugin_path):
     """
-    Given a plugin path, return the path to its venv's site-packages directory.
+    Given a plugin path, return the list of package directories. On most
+    platforms this will just be its site-packages directory, but on Ubuntu this
+    will also include the dist-packages directory.
     """
-    path = join(plugin_path, 'env', 'lib', 'python{}.{}'.format(*sys.version_info),
-                'site-packages')
-
-    assert os.path.exists(path), 'plugin site-packages path "{}" does not exist'.format(path)
-    return path
+    python = 'python{}.{}'.format(*sys.version_info)
+    paths = [
+        join(plugin_path, 'env', 'lib', python, 'site-packages'),
+        join(plugin_path, 'env', 'local', 'lib', python, 'dist-packages')
+    ]
+    if not os.path.exists(paths[0]):
+        raise SideboardImportError('plugin site-packages path "{}" does not exist'.format(paths[0]))
+    return [p for p in paths if os.path.exists(p)]  
 
 
 def filter_distribute_modules(module_names):
@@ -269,10 +287,6 @@ def get_modules(site_path):
                 yield filename.split('-', 1)[0]
 
 
-class SideboardImportError(Exception):
-    pass
-
-
 def handle_exception(exception, plugin_name, module_name, log=log):
     error_msg = '{exception_name} caught while importing {module_name}'.format(
         exception_name=type(exception).__name__,
@@ -293,38 +307,27 @@ def handle_exception(exception, plugin_name, module_name, log=log):
             log.debug(error_msg)
 
 
-def ensure_plugin_module_loaded(plugin_name, sys=sys):
+def ensure_plugin_module_loaded(plugin_name):
     if plugin_name not in sys.modules:
         raise SideboardImportError(('plugin module {} not loaded; '
-            'did you forget to run `setup.py develop`?').format(
-                plugin_name
-        ))
+            'did you forget to run `setup.py develop`?').format(plugin_name))
 
 
-# this is currently repeating almost all of import_plugins;
-def _discover_plugins(plugins_dir=config['plugins_dir']):
-    """
-    variation of import_plugins, where instead of importing all plugins and importing
-    the site-packages of that plugin virtualenv, simply import the plugin modules that
-    we find. It's likely that this can be reduced in scope
-    """
-    plugin_paths = glob(join(plugins_dir, '*'))
+def _discover_plugins():
+    plugin_paths = glob(join(config['plugins_dir'], '*'))
     for plugin_path in plugin_paths:
-        if not os.path.isdir(plugin_path):
-            continue
-        extra_path = get_plugin_path_extension(plugin_path)
-        plugin_name = os.path.basename(plugin_path)
-        plugin_name = plugin_name.replace('-', '_')
-        with set_aside(), patch_path(plugin_name, *extra_path), clear_module_cache(plugin_name):
-            site_packages = get_plugin_site_packages_directory(plugin_path)
-            for module_name in filter_distribute_modules(get_modules(site_packages)):
-                if not module_name.startswith(plugin_name):
-                    continue
-                try:
-                    importlib.import_module(module_name)
-                except Exception as e:
-                    handle_exception(e, plugin_name, module_name)
-        ensure_plugin_module_loaded(plugin_name)
+        if os.path.isdir(plugin_path) and not os.path.split(plugin_path)[-1].startswith('_'):
+            extra_path = get_plugin_path_extension(plugin_path)
+            plugin_name = os.path.basename(plugin_path).replace('-', '_')
+            with set_aside(), patch_path(plugin_name, *extra_path), clear_module_cache(plugin_name):
+                for package_dir in get_plugin_venv_package_directories(plugin_path):
+                    for module_name in filter_distribute_modules(get_modules(package_dir)):
+                        if module_name.startswith(plugin_name):
+                            try:
+                                importlib.import_module(module_name)
+                            except Exception as e:
+                                handle_exception(e, plugin_name, module_name)
+            ensure_plugin_module_loaded(plugin_name)
 
 
 def _yield_frames():
@@ -340,6 +343,7 @@ def _yield_frames():
         else:
             depth += 1
 
+
 def _yield_module_names_and_filenames_from_callstack():
     for frame in _yield_frames():
         try:
@@ -351,12 +355,13 @@ def _yield_module_names_and_filenames_from_callstack():
         else:
             yield module_name, filename
 
-def _get_sideboard_plugin_where_import_originated():
+
+def get_current_plugin():
     """
     Determine whether or not the import was called from a plugin or third-party module
-    in a plugin. If if it did, return which plugin.
+    in a plugin. If it did, return the plugin name.
 
-    since this method uses sys._getframes under the hood, we are limited to cpython
+    since this method uses sys._getframes under the hood, we are limited to CPython
 
     :return: plugin name as a unicode object or None if the import was not from a plugin
     """
@@ -369,39 +374,6 @@ def _get_sideboard_plugin_where_import_originated():
         if _is_plugin_name(potential_plugin_name):
             return potential_plugin_name
 
-    return None
-
-def _import_overrider(original_import, global_import_lock):
-
-    def _thread_safe_import_that_handles_plugin_virtualenvs(*args, **kwargs):
-        """
-        Sideboard supports plugins having different/distinct virtualenvs
-        by messing with sys.path and sys.modules such that we resolve imports
-        to a plugin's virtualenv (if appropriate). Since we don't want CherryPy to
-        be stuck in single-threaded mode, we need do this in a thread safe manner.
-
-        If sys.path or sys.modules are modified outside of the import mechanism, those
-        changes will be thrown away due to the use_plugin_virtual_env context manager
-        """
-
-        # block until we've acquired the global lock to avoid multiple parties messing
-        # with sys.modules or sys.path
-        with global_import_lock:
-            plugin_name = _get_sideboard_plugin_where_import_originated()
-            # did this import actually come from a sideboard plugin?
-            if plugin_name:
-                # it did, so "activate" the plugin's virtualenv so the imports
-                # populate the sys.modules cache for the plugin (instead of the
-                # sideboard-level sys.modules). When we exit the context manager
-                # we swap back in the sideboard-level sys.modules.
-                with use_plugin_virtualenv(plugin_name):
-                    return original_import(*args, **kwargs)
-
-            else:
-                # apparently not; import as normal
-                return original_import(*args, **kwargs)
-
-    return _thread_safe_import_that_handles_plugin_virtualenvs
 
 def _is_plugin_name(name):
     """
@@ -421,13 +393,9 @@ def _venv_plugin_name(file):
     :param file: the __file__ of a module
     """
     abspath = os.path.realpath(os.path.abspath(file))
-
-
     for plugin_name, paths in _path_cache.items():
         try:
-            #re.search(r'^.+site-packages/?$', p) is apparently 5 times slower?
-            [spdir] = [p for p in paths
-                       if p.endswith('site-packages') or p.endswith('site-packages/')]
+            [spdir] = [p for p in paths if p.rstrip('/').endswith('site-packages')]
         except ValueError:
             # there's a plugin without a site-packages; this is most likely because of a
             # unittest/mocking situation

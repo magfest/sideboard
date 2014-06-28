@@ -1,22 +1,23 @@
 from __future__ import unicode_literals
+import re
 import json
 import uuid
-import re
 import types
 import inspect
 
+import six
 import sqlalchemy
 from sqlalchemy import event
 from sqlalchemy.dialects import sqlite  # TODO: improve our import overrides such that this is no longer necessary
 from sqlalchemy.ext import declarative
 from sqlalchemy.dialects import postgresql
-from sqlalchemy.orm import sessionmaker, configure_mappers
+from sqlalchemy.orm import Query, sessionmaker, configure_mappers
 from sqlalchemy.types import TypeDecorator, String, DateTime, CHAR, Unicode
 
 from sideboard.lib import log, config
 
-__all__ = [b'UUID', b'JSON', b'CoerceUTF8', b'declarative_base', b'SessionManager',
-           b'CrudException', b'crudable', b'crud_validation', b'text_length_validation', b'regex_validation']
+__all__ = ['UUID', 'JSON', 'CoerceUTF8', 'declarative_base', 'SessionManager',
+           'CrudException', 'crudable', 'crud_validation', 'text_length_validation', 'regex_validation']
 
 
 def _camelcase_to_underscore(value):
@@ -101,7 +102,7 @@ class JSON(TypeDecorator):
     def process_bind_param(self, value, dialect):
         if value is None:
             return None
-        elif isinstance(value, basestring):
+        elif isinstance(value, six.string_types):
             return value
         else:
             return json.dumps(value)
@@ -140,14 +141,15 @@ else:
             if value is not None:
                 return value.replace(tzinfo=UTC)
 
-    __all__.append(b'UTCDateTime')
+    __all__.append('UTCDateTime')
 
 
 def declarative_base(klass):
     class Mixed(klass, CrudMixin):
         pass
 
-    Mixed = declarative.declarative_base(cls=Mixed)
+    constructor = {'constructor': klass.__init__} if '__init__' in klass.__dict__ else {}
+    Mixed = declarative.declarative_base(cls=Mixed, **constructor)
     Mixed.BaseClass = _SessionInitializer.BaseClass = Mixed
     Mixed.__tablename__ = declarative.declared_attr(lambda cls: _camelcase_to_underscore(cls.__name__))
     return Mixed
@@ -159,16 +161,19 @@ class _SessionInitializer(type):
         if hasattr(SessionClass, 'engine'):
             assert hasattr(SessionClass, 'BaseClass'), 'no BaseClass specified and @declarative_base was never invoked'
             if not hasattr(SessionClass, 'session_factory'):
-                SessionClass.session_factory = sessionmaker(bind=SessionClass.engine, autoflush=False, autocommit=False)
+                SessionClass.session_factory = sessionmaker(bind=SessionClass.engine, autoflush=False, autocommit=False,
+                                                            query_cls=SessionClass.QuerySubclass)
             SessionClass.initialize_db()
             SessionClass.crud = make_crud_service(SessionClass)
         return SessionClass
 
 
+@six.add_metaclass(_SessionInitializer)
 class SessionManager(object):
-    __metaclass__ = _SessionInitializer
-
     class SessionMixin(object):
+        pass
+
+    class QuerySubclass(Query):
         pass
 
     def __init__(self):
@@ -231,5 +236,8 @@ class SessionManager(object):
                 return cls.BaseClass.metadata.tables[name]
 
         raise ValueError('Unrecognized model: {}'.format(name))
+
+if six.PY2:
+    __all__ = [s.encode('ascii') for s in __all__]
 
 from sideboard.lib.sa._crud import CrudMixin, make_crud_service, crudable, CrudException, crud_validation, text_length_validation, regex_validation

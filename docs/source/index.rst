@@ -154,11 +154,12 @@ In order for that code to work, let's update our imports at the top of the file:
     from ragnarok import config
     from sideboard.lib.sa import SessionManager, UUID, UTCDateTime, declarative_base
 
-Notice that we're using the `pytz module <http://pytz.sourceforge.net/>`_ so we need to install that in our plugin's virtualenv.  So open the ``requirements.txt`` file in your plugin root directory and add the following line:
+Notice that we're using the `pytz module <http://pytz.sourceforge.net/>`_ so we need to install that in our plugin's virtualenv.  In fact, we're also going to use the ``requests`` module later on in this tutorial, so let's install that as well.  Open the ``requirements.txt`` file in your plugin root directory and add the following lines:
 
 .. code-block:: none
 
     pytz==2013b
+    requests==2.2.1
 
 Now we can run 
 
@@ -166,7 +167,7 @@ Now we can run
 
     ./env/bin/python setup.py develop
 
-from our plugin root directory and pytz will be installed.
+from our plugin root directory and both of our new dependencies will be installed.
 
 Now we can play around in the REPL by running ``./env/bin/python`` in the top-level Sideboard directory (*not* your top-level plugin directory):
 
@@ -233,7 +234,7 @@ Now that we've done the necessary database and configuration work, we can write 
             rsess.proxies = {'http': config['proxy'], 'https': config['proxy']}
         with sa.Session() as session:
             for website in session.query(sa.Website).all():
-                page = rsess.get(website.url).content
+                page = rsess.get(website.url).text
                 ended = website.search_for not in page
                 session.add(sa.Result(website=website, world_ended=ended))
 

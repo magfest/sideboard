@@ -1,13 +1,13 @@
-configobj==5.0.2
+configobj==5.0.5
 cherrypy==3.2.5
-python-ldap==2.3.13
+#python-ldap==2.3.13
 ws4py==0.3.2
 SQLAlchemy==0.8.5
 six==1.5.2
 Jinja2==2.6
-rpctools==0.1.0
+rpctools==0.2.1
 logging_unterpolation==0.2.0
-requests==1.2.0
+requests==2.2.1
 pytest==2.5.2
 mock==1.0.1
 Sphinx==1.2.1

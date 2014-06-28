@@ -187,11 +187,11 @@ class AutoLogger(object):
         self.adapter_kwargs = adapter_kwargs
 
     def __getattr__(self, name):
-        if 'self' in inspect.currentframe(1).f_locals:
-            other = inspect.currentframe(1).f_locals['self']
+        if 'self' in inspect.currentframe().f_back.f_locals:
+            other = inspect.currentframe().f_back.f_locals['self']
             caller_name = '%s.%s' % (other.__class__.__module__, other.__class__.__name__)
         else:
-            caller_name = inspect.currentframe(1).f_globals['__name__']
+            caller_name = inspect.currentframe().f_back.f_globals['__name__']
         logger = logging.getLogger(caller_name)
 
         if self.adapter_class:
@@ -220,13 +220,11 @@ def log_exceptions(fn):
             a = args or []
             a = [str(x)[:255] for x in a]
             kw = kwargs or {}
-            kw = dict(
-                [(str(k)[:255], str(v)[:255]) for k, v in kw.iteritems()])
-            log.debug(
-                'Calling %s.%s %r %r' % (fn.__module__, fn.__name__, a, kw))
+            kw = {str(k)[:255]: str(v)[:255] for k, v in kw.items()}
+            log.debug('Calling %s.%s %r %r' % (fn.__module__, fn.__name__, a, kw))
             return fn(*args, **kwargs)
-        except Exception, e:
-            log.error("Error calling function %s: %s" % (fn.__name__, e))
+        except Exception as e:
+            log.error('Error calling function %s: %s' % (fn.__name__, e))
             log.exception(e)
             raise
 

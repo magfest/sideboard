@@ -3,12 +3,13 @@ import json
 import socket
 from uuid import uuid4
 from time import sleep
-from urllib import urlencode
 from random import randrange
 from unittest import TestCase
-from Queue import Queue, Empty
 from contextlib import closing
-from urlparse import urlparse, parse_qsl
+
+import six
+from six.moves.queue import Queue, Empty
+from six.moves.urllib.parse import urlparse, urlencode, parse_qsl
 
 import pytest
 import cherrypy
@@ -94,6 +95,10 @@ class SideboardServerTest(TestCase):
         ws.q = Queue()
         ws.fallback = ws.q.put
         return ws
+
+    def tearDown(self):
+        while not self.ws.q.empty():
+            self.ws.q.get_nowait()
 
     def wait_for(self, func, *args, **kwargs):
         for i in range(50):
@@ -438,7 +443,7 @@ class TestWebsocketsCrudSubscriptions(SideboardServerTest):
             assert not getattr(self.mr, name + '_error', False)
             return uuid4().hex
 
-        crud_method.__name__ = name.encode('utf-8')
+        crud_method.__name__ = name.encode('utf-8') if six.PY2 else name
         return crud_method
 
     def models(self, *models):

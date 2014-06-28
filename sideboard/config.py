@@ -148,7 +148,7 @@ def parse_config(requesting_file_path, plugin=True):
         ~/sideboard/plugins/plugin_nickname/plugin_module_name/__init__.py
         the containing directory (here, 'plugin_module_name') is assumed to be the module name of
         the plugin that is requesting a parsed config.
-    :type requesting_file_path: basestring
+    :type requesting_file_path: binary or unicode string
     :param plugin: if True (default) add plugin-relevant information to the returning config. Also,
         treat it as if it's a plugin
     :type plugin: bool
@@ -161,7 +161,7 @@ def parse_config(requesting_file_path, plugin=True):
     spec = configobj.ConfigObj(specfile, interpolation=False, list_values=False, encoding='utf-8', _inspec=True)
 
     # to allow more/better interpolations
-    root_conf = [b'root = "{}"\n'.format(root_dir), b'module_root = "{}"\n'.format(module_dir)]
+    root_conf = ['root = "{}"\n'.format(root_dir), 'module_root = "{}"\n'.format(module_dir)]
     temp_config = configobj.ConfigObj(root_conf, interpolation=False, encoding='utf-8')
 
     for config_path in get_config_files(requesting_file_path, plugin):

@@ -10,6 +10,7 @@ from functools import wraps
 from threading import local, RLock
 from collections import defaultdict
 
+import six
 import cherrypy
 
 from ws4py.websocket import WebSocket
@@ -91,7 +92,7 @@ def _normalize_channels(*channels):
         if topic is not None:
             if isinstance(topic, type):
                 normalized_channels.append(topic.__name__)
-            elif isinstance(topic, basestring):
+            elif isinstance(topic, six.string_types):
                 topic = topic.strip()
                 if topic != '':
                     normalized_channels.append(topic)
@@ -198,10 +199,9 @@ def _fingerprint(x):
     '2c22e445e9278c66dd7ea78b757defe6'
     """
     md5 = hashlib.md5()
-    if isinstance(x, basestring):
-        md5.update(x)
-    else:
-        md5.update(json.dumps(x, cls=sideboard.lib.serializer, sort_keys=True, separators=(',', ':')))
+    if not isinstance(x, six.string_types):
+        x = json.dumps(x, cls=sideboard.lib.serializer, sort_keys=True, separators=(',', ':'))
+    md5.update(x.encode('utf-8') if six.PY3 else x)
     return md5.hexdigest()
 
 
@@ -339,7 +339,8 @@ class WebSocketDispatcher(WebSocket):
 
     def received_message(self, message):
         try:
-            fields = json.loads(str(message.data))
+            data = message.data if isinstance(message.data, six.text_type) else message.data.decode('utf-8')
+            fields = json.loads(data)
             assert isinstance(fields, dict)
         except:
             message = 'incoming websocket message was not a json object: {}'.format(message.data)
