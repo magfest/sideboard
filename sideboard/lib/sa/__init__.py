@@ -11,7 +11,7 @@ from sqlalchemy import event
 from sqlalchemy.dialects import sqlite  # TODO: improve our import overrides such that this is no longer necessary
 from sqlalchemy.ext import declarative
 from sqlalchemy.dialects import postgresql
-from sqlalchemy.orm import sessionmaker, configure_mappers
+from sqlalchemy.orm import Query, sessionmaker, configure_mappers
 from sqlalchemy.types import TypeDecorator, String, DateTime, CHAR, Unicode
 
 from sideboard.lib import log, config
@@ -161,7 +161,8 @@ class _SessionInitializer(type):
         if hasattr(SessionClass, 'engine'):
             assert hasattr(SessionClass, 'BaseClass'), 'no BaseClass specified and @declarative_base was never invoked'
             if not hasattr(SessionClass, 'session_factory'):
-                SessionClass.session_factory = sessionmaker(bind=SessionClass.engine, autoflush=False, autocommit=False)
+                SessionClass.session_factory = sessionmaker(bind=SessionClass.engine, autoflush=False, autocommit=False,
+                                                            query_cls=SessionClass.QuerySubclass)
             SessionClass.initialize_db()
             SessionClass.crud = make_crud_service(SessionClass)
         return SessionClass
@@ -170,6 +171,9 @@ class _SessionInitializer(type):
 @six.add_metaclass(_SessionInitializer)
 class SessionManager(object):
     class SessionMixin(object):
+        pass
+
+    class QuerySubclass(Query):
         pass
 
     def __init__(self):
