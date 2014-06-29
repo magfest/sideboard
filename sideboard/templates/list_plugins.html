@@ -13,7 +13,11 @@
                 <td><ul style="margin:0px"><li/></ul></td>
                 <td><b>$(( plugin.name ))$</b></td>
                 <td>(version $(( plugin.version|default('not specified', true) ))$)</td>
-                <td>((% for path in plugin.paths %)) <a href="$(( path ))$/">$(( path ))$</a> ((% endfor %))</td>
+                <td>
+                    ((% for path in plugin.paths %))
+                        <a href="$(( path ))$/">$(( path ))$</a>
+                    ((% endfor %))
+                </td>
             </tr>
         ((% endfor %))
         </table>

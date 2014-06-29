@@ -1,47 +1,28 @@
 from __future__ import unicode_literals, print_function
 import os
-import pkg_resources
 import sys
 import glob
-
+import pkg_resources
 from itertools import chain
+from os.path import abspath, dirname, exists, join
 
 import paver.virtual as virtual
 from paver.easy import *  # paver docs pretty consistently want you to do this
 from paver.path import path  # primarily here to support the rmtree method of a path object
 
-__here__ = path(os.path.abspath(os.path.dirname(__file__)))
-
+__here__ = path(abspath(dirname(__file__)))
 PLUGINS_DIR = __here__ / path('plugins')
 SIDEBOARD_DIR = __here__ / path('sideboard')
 
 
-def bootstrap_plugin_venv(plugin_path, plugin_name, venv_name='env'):
-    """
-    make a virtualenv with the specified name at the specified location
-
-    :param plugin_path: the absolute path to the plugin folder
-    :type plugin_path: unicode
-    :param plugin_name: the name of the plugin
-    :type plugin_name: unicode
-    :param plugin_name: the name of the venv folder (default: env)
-    :type plugin_name: unicode
-    """
-
-    assert os.path.exists(plugin_path), "{} doesn't exist".format(plugin_path)
-    intended_venv = path(plugin_path) / path(venv_name)
-
-    bootstrap_venv(intended_venv, plugin_name)
-
-
 def bootstrap_venv(intended_venv, bootstrap_name=None):
     # bootstrap wants options available in options.virtualenv which is a Bunch
-    if os.path.exists(intended_venv):
+    if exists(intended_venv):
         intended_venv.rmtree()
 
     venv = getattr(options, 'virtualenv', Bunch())
 
-    with open(path(os.path.dirname(intended_venv)) / path('requirements.txt')) as reqs:
+    with open(path(dirname(intended_venv)) / path('requirements.txt')) as reqs:
         # we expect this to be reversed in setup.py
         venv.packages_to_install = [line.strip() for line in reqs.readlines()[::-1] if line.strip()]
 
@@ -56,32 +37,6 @@ def bootstrap_venv(intended_venv, bootstrap_name=None):
         # and we can expect the virtual env will then exist
         sh('{python_path} "{script_name}"'.format(python_path=sys.executable,
                                                   script_name=venv.script_name))
-
-        # we're going to assume that worked, so run setup.py develop
-        develop_plugin(intended_venv)
-
-
-@task
-@cmdopts([('plugin=', 'p',
-           'name (not necessarily repo name) of the plugin to make a virtualenv for')])
-def make_plugin_venv(options):
-    """
-    make a virtualenv named 'env' for the specified plugin
-    """
-    # TODO: disassociate plugin name with folder name
-    bootstrap_plugin_venv(PLUGINS_DIR / options.make_plugin_venv.plugin,
-                          options.make_plugin_venv.plugin)
-
-
-@task
-def make_plugin_venvs():
-    """
-    make a virtualenv named 'env' for plugin found in the plugins folder
-    """
-
-    for plugin_dir in collect_plugin_dirs():
-
-        bootstrap_plugin_venv(plugin_dir, os.path.split(plugin_dir)[-1])
 
 
 def guess_plugin_module_name(containing_folder):
@@ -104,42 +59,23 @@ def collect_plugin_dirs(module=False):
     :rtype: collections.Iterator
     """
     for potential_folder in glob.glob(PLUGINS_DIR / path('*')):
-        if all(os.path.exists(os.path.join(potential_folder, req_file))
-               for req_file in ('setup.py', 'requirements.txt')):
+        if all(exists(join(potential_folder, req_file)) for req_file in ('setup.py', 'requirements.txt')):
             if module:
-                yield os.path.join(potential_folder, guess_plugin_module_name(potential_folder))
+                yield join(potential_folder, guess_plugin_module_name(potential_folder))
             else:
                 yield potential_folder
 
-
 @task
-def make_sideboard_venv():
+def make_venv():
     """
     make a virtualenv for the sideboard project
     """
-
     bootstrap_venv(__here__ / path('env'), 'sideboard')
     develop_sideboard()
 
-
-def develop_plugin(virtual_env):
-    # TODO: this is very hard-coded and should be done better
-    sh('cd {module_dir};{python_path} setup.py develop'.format(
-        python_path=os.path.join(virtual_env, 'bin', 'python'),
-        module_dir=os.path.dirname(virtual_env)))
-
 def develop_sideboard():
     # TODO: this is very hard-coded and should be done better
-    sh('{python_path} setup.py develop'.format(python_path=os.path.join('env', 'bin', 'python')))
-
-
-@task
-@needs(['make_plugin_venvs', 'make_sideboard_venv'])
-def make_all_venvs():
-    """
-    make all the plugin virtual environments and the overall sideboard env
-    """
-
+    sh('{python_path} setup.py develop'.format(python_path=join('env', 'bin', 'python')))
 
 @task
 def pull_plugins():
@@ -150,25 +86,26 @@ happen auth-free, or you need to enter your credentials each time
     for plugin_dir in collect_plugin_dirs():
         sh('cd "{}";git pull'.format(plugin_dir))
 
-
 @task
 def assert_all_files_import_unicode_literals():
     """
-    error if a python file is found in sideboard or plugins that does not import unicode_literals
+    error if a python file is found in sideboard or plugins that does not import unicode_literals; \
+this is skipped for Python 3
     """
-    all_files_found = []
-    cmd = ("find '%s' -name '*.py' ! -size 0 "
-           "-exec grep -RL 'from __future__ import.*unicode_literals.*$' {} \;")
-    for test_dir in chain(['sideboard'], collect_plugin_dirs(module=True)):
-        output = sh(cmd % test_dir, capture=True)
-        if output:
-            all_files_found.append(output)
+    if sys.version_info[0] == 2:
+        all_files_found = []
+        cmd = ("find '%s' -name '*.py' ! -size 0 "
+               "-exec grep -RL 'from __future__ import.*unicode_literals.*$' {} \;")
+        for test_dir in chain(['sideboard'], collect_plugin_dirs(module=True)):
+            output = sh(cmd % test_dir, capture=True)
+            if output:
+                all_files_found.append(output)
 
-    if all_files_found:
-        print('the following files did not include "from __future__ import unicode_literals":')
-        print(''.join(all_files_found))
-        raise BuildFailure("there were files that didn't include "
-                           '"from __future__ import unicode_literals"')
+        if all_files_found:
+            print('the following files did not include "from __future__ import unicode_literals":')
+            print(''.join(all_files_found))
+            raise BuildFailure("there were files that didn't include "
+                               '"from __future__ import unicode_literals"')
 
 @task
 def assert_all_projects_correctly_define_a_version():
@@ -183,7 +120,6 @@ def assert_all_projects_correctly_define_a_version():
             sh(cmd.format(test_dir))
         except BuildFailure:
             all_files_with_bad_versions.append(test_dir)
-
 
     if all_files_with_bad_versions:
         print('the following directories do not include a _version.py file with __version__ '
@@ -238,6 +174,15 @@ def create_plugin(options):
     from data.paver import skeleton
     skeleton.create_plugin(PLUGINS_DIR, plugin_name, **kwargs)
     print('{} successfully created'.format(options.create_plugin.name))
+
+@task
+def install_deps():
+    develop_sideboard()
+    for pdir in collect_plugin_dirs():
+        sh('cd {pdir} && {python_path} {setup_path} develop'
+           .format(pdir=pdir,
+                   python_path=join(__here__, 'env', 'bin', 'python'),
+                   setup_path=join(pdir, 'setup.py')))
 
 @task
 def clean():

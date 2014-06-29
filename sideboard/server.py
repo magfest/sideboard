@@ -84,23 +84,20 @@ class Root(object):
         }
 
     def list_plugins(self):
-        from sideboard.internal.imports import _module_cache
-        plugins = {}
-
-        for plugin, modules in _module_cache.items():
-            if plugin not in plugins:
-                plugins[plugin] = {
-                    'name': ' '.join(plugin.split('_')).title(),
-                    'version': getattr(modules[plugin], '__version__', None),
-                    'paths': []
-                }
+        from sideboard.internal.imports import plugins
+        plugin_info = {}
+        for plugin, module in plugins.items():
+            plugin_info[plugin] = {
+                'name': ' '.join(plugin.split('_')).title(),
+                'version': getattr(module, '__version__', None),
+                'paths': []
+            }
         for path, app in cherrypy.tree.apps.items():
             if path:  # exclude what Sideboard itself mounts
                 plugin = app.root.__module__.split('.')[0]
-                plugins[plugin]['paths'].append(path)
-
+                plugin_info[plugin]['paths'].append(path)
         return {
-            'plugins': plugins,
+            'plugins': plugin_info,
             'version': getattr(sideboard, '__version__', None)
         }
 
