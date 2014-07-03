@@ -162,7 +162,7 @@ def query_from(obj, attr='id'):
     }
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope='module')
 def init_db(request):
     class db: pass
     patch_session(Session, request)
@@ -180,8 +180,8 @@ def init_db(request):
 
 @pytest.fixture(autouse=True)
 def db(request, init_db):
-    shutil.copy('/tmp/test.db', '/tmp/test.db.backup')
-    request.addfinalizer(lambda: shutil.copy('/tmp/test.db.backup', '/tmp/test.db'))
+    shutil.copy('/tmp/sideboard.db', '/tmp/sideboard.db.backup')
+    request.addfinalizer(lambda: shutil.move('/tmp/sideboard.db.backup', '/tmp/sideboard.db'))
     return init_db
 
 

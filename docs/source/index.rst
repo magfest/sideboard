@@ -58,7 +58,7 @@ Let's start by cloning the Sideboard repo and running it without any plugins:
 
     $ git clone https://github.com/appliedsec/sideboard.git
     $ cd sideboard/
-    $ paver make_sideboard_venv
+    $ paver make_venv
     $ ./env/bin/python sideboard/run_server.py
 
 Now you can go to `<http://localhost:8282/>`_ and you'll see a page show you Sideboard's version and all of the installed plugins (currently none).
@@ -97,11 +97,11 @@ This will create the following directory structure in your ``plugins`` directory
     |-- setup.cfg
     `-- setup.py
 
-Next we'll make a separate virtualenv for our new plugin:
+We haven't added any new dependencies to this plugin yet (in its ``requirements.txt`` file), but if we had then we'd run
 
 .. code-block:: none
 
-    paver make_plugin_venvs
+    paver install_deps
 
 Now you can re-run
 
@@ -154,22 +154,27 @@ In order for that code to work, let's update our imports at the top of the file:
     from ragnarok import config
     from sideboard.lib.sa import SessionManager, UUID, UTCDateTime, declarative_base
 
-Notice that we're using the `pytz module <http://pytz.sourceforge.net/>`_ so we need to install that in our plugin's virtualenv.  In fact, we're also going to use the ``requests`` module later on in this tutorial, so let's install that as well.  Open the ``requirements.txt`` file in your plugin root directory and add the following lines:
+Notice that we're using the `pytz module <http://pytz.sourceforge.net/>`_ so we need to install that in our plugin's virtualenv.  (We're also going to use the ``requests`` module later on in this tutorial, but Sideboard already has that as a dependency.)  Open the ``requirements.txt`` file in your plugin root directory and add the following lines:
 
 .. code-block:: none
 
     pytz==2013b
-    requests==2.2.1
 
 Now we can run 
 
 .. code-block:: none
 
-    ./env/bin/python setup.py develop
+    paver install_deps
 
-from our plugin root directory and both of our new dependencies will be installed.
+from the top-level Sideboard directory.  If you'd prefer, you can activate the Sideboard virtualenv and then run
 
-Now we can play around in the REPL by running ``./env/bin/python`` in the top-level Sideboard directory (*not* your top-level plugin directory):
+.. code-block:: none
+
+    python setup.py develop
+
+from the plugin root directory.
+
+Now we can play around in the REPL by running your Sideboard virtualenv's ``python``:
 
 >>> import sideboard
 >>> from ragnarok import sa
@@ -252,7 +257,7 @@ Here's what we did with the above code:
 
 * defined an ``apocalypse`` channel such that if anyone subscribes to the result of the ``all_checks`` or ``true_or_false`` function, then every time the ``check_for_apocalypse`` function is called, those methods will be re-run and the latest data will be pushed to the clients if the results have changed
 
-So let's test out these methods in the REPL by running ``./env/bin/python`` from the top-level Sideboard directory (*not* your top-level plugin directory):
+So let's test out these methods in the REPL by running the ``python`` from Sideboard's virtualenv:
 
 >>> import sideboard
 >>> from ragnarok import service

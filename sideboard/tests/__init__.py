@@ -1,9 +1,12 @@
 from __future__ import unicode_literals
+import os
 
 import pytest
+import sqlalchemy
+from sqlalchemy import event
+from sqlalchemy.orm import sessionmaker
 
 from sideboard.lib import config, services
-from sideboard.internal.imports import use_plugin_virtualenv, _is_plugin_name
 
 
 @pytest.fixture
@@ -33,23 +36,13 @@ def config_patcher(request):
     return patch_config
 
 def patch_session(Session, request):
-    def _patch():
-        import sqlalchemy
-        from sqlalchemy import event
-        from sqlalchemy.orm import sessionmaker
+    orig_engine, orig_factory = Session.engine, Session.session_factory
+    request.addfinalizer(lambda: setattr(Session, 'engine', orig_engine))
+    request.addfinalizer(lambda: setattr(Session, 'session_factory', orig_factory))
 
-        orig_engine, orig_factory = Session.engine, Session.session_factory
-        request.addfinalizer(lambda: setattr(Session, 'engine', orig_engine))
-        request.addfinalizer(lambda: setattr(Session, 'session_factory', orig_factory))
-
-        Session.engine = sqlalchemy.create_engine('sqlite+pysqlite:////tmp/test.db')
-        event.listen(Session.engine, 'connect', lambda conn, record: conn.execute('pragma foreign_keys=ON'))
-        Session.session_factory = sessionmaker(bind=Session.engine, autoflush=False, autocommit=False)
-        Session.initialize_db(drop=True)
-
-    possible_plugin = Session.__module__.split('.')[0]
-    if _is_plugin_name(possible_plugin):
-        with use_plugin_virtualenv(possible_plugin):
-            _patch()
-    else:
-        _patch()
+    name = Session.__module__.split('.')[0]
+    db_path = '/tmp/{}.db'.format(name)
+    Session.engine = sqlalchemy.create_engine('sqlite+pysqlite:///' + db_path)
+    event.listen(Session.engine, 'connect', lambda conn, record: conn.execute('pragma foreign_keys=ON'))
+    Session.session_factory = sessionmaker(bind=Session.engine, autoflush=False, autocommit=False)
+    Session.initialize_db(drop=True)

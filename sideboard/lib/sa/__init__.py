@@ -150,16 +150,25 @@ def declarative_base(klass):
 
     constructor = {'constructor': klass.__init__} if '__init__' in klass.__dict__ else {}
     Mixed = declarative.declarative_base(cls=Mixed, **constructor)
-    Mixed.BaseClass = _SessionInitializer.BaseClass = Mixed
+    Mixed.BaseClass = _SessionInitializer._base_classes[klass.__module__] = Mixed
     Mixed.__tablename__ = declarative.declared_attr(lambda cls: _camelcase_to_underscore(cls.__name__))
     return Mixed
 
 
 class _SessionInitializer(type):
+    _base_classes = {}
+
     def __new__(cls, name, bases, attrs):
         SessionClass = type.__new__(cls, name, bases, attrs)
         if hasattr(SessionClass, 'engine'):
-            assert hasattr(SessionClass, 'BaseClass'), 'no BaseClass specified and @declarative_base was never invoked'
+            print('modules', SessionClass.__module__, [bc for bc in _SessionInitializer._base_classes])
+            if not hasattr(SessionClass, 'BaseClass'):
+                for module, bc in _SessionInitializer._base_classes.items():
+                    if module == SessionClass.__module__:
+                        SessionClass.BaseClass = bc
+                        break
+                else:
+                    raise AssertionError('no BaseClass specified and @declarative_base was never invoked in {}'.format(SessionClass.__module__))
             if not hasattr(SessionClass, 'session_factory'):
                 SessionClass.session_factory = sessionmaker(bind=SessionClass.engine, autoflush=False, autocommit=False,
                                                             query_cls=SessionClass.QuerySubclass)
