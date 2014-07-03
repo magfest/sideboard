@@ -161,7 +161,6 @@ class _SessionInitializer(type):
     def __new__(cls, name, bases, attrs):
         SessionClass = type.__new__(cls, name, bases, attrs)
         if hasattr(SessionClass, 'engine'):
-            print('modules', SessionClass.__module__, [bc for bc in _SessionInitializer._base_classes])
             if not hasattr(SessionClass, 'BaseClass'):
                 for module, bc in _SessionInitializer._base_classes.items():
                     if module == SessionClass.__module__:
