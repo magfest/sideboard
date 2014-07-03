@@ -44,5 +44,6 @@ def patch_session(Session, request):
     db_path = '/tmp/{}.db'.format(name)
     Session.engine = sqlalchemy.create_engine('sqlite+pysqlite:///' + db_path)
     event.listen(Session.engine, 'connect', lambda conn, record: conn.execute('pragma foreign_keys=ON'))
-    Session.session_factory = sessionmaker(bind=Session.engine, autoflush=False, autocommit=False)
+    Session.session_factory = sessionmaker(bind=Session.engine, autoflush=False, autocommit=False,
+                                           query_cls=Session.QuerySubclass)
     Session.initialize_db(drop=True)
