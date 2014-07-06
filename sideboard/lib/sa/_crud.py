@@ -182,6 +182,11 @@ class CrudException(Exception):
     pass
 
 
+class ClassProperty(property):
+    def __get__(self, cls, owner):
+        return self.fget.__get__(None, owner)()
+
+
 def listify_with_count(x, count=None):
     x = listify(x)
     if count and len(x) < count:
@@ -1264,6 +1269,18 @@ class CrudMixin(object):
             self._to_dict_type_cast_mapping = defaultdict(lambda: lambda x: x, type_casts)
         return self._to_dict_type_cast_mapping
 
+    @ClassProperty
+    @classmethod
+    def to_dict_default_attrs(cls):
+        attr_names = []
+        for name in collect_ancestor_attributes(cls, terminal_cls=cls.BaseClass):
+            if not name.startswith('_') or name in cls.extra_defaults:
+                attr = getattr(cls, name)
+                if isinstance(attr, InstrumentedAttribute) and isinstance(attr.property, ColumnProperty) \
+                        or not isinstance(attr, (property, InstrumentedAttribute, ClauseElement)) and not callable(attr):
+                    attr_names.append(name)
+        return attr_names
+
     def to_dict(self, attrs=None, validator=lambda self, name: True):
         obj = {}
         attrs = normalize_object_graph(attrs)
@@ -1282,16 +1299,9 @@ class CrudMixin(object):
             return self._type_casts_for_to_dict[value.__class__](value)
 
         if attrs is None:
-            for name in collect_ancestor_attributes(self.__class__, terminal_cls=self.BaseClass):
-                if not validator(self, name):
-                    continue
-                if not name.startswith('_') or name in self.extra_defaults:
-                    attr = getattr(self.__class__, name)
-                    if isinstance(attr, InstrumentedAttribute):
-                        if isinstance(attr.property, ColumnProperty):
-                            obj[name] = cast_type(getattr(self, name))
-                    elif not isinstance(attr, (property, ClauseElement)) and not callable(attr):
-                        obj[name] = cast_type(getattr(self, name))
+            for name in self.to_dict_default_attrs:
+                if validator(self, name):
+                    obj[name] = cast_type(getattr(self, name))
         else:
             for name in self.extra_defaults + list(attrs.keys()):
                 # if we're not supposed to get the attribute according to the validator,
@@ -1712,10 +1722,6 @@ class crudable(object):
         self.data_spec = data_spec or {}
     
     def __call__(self, cls):
-        class ClassProperty(property):
-            def __get__(self, cls, owner):
-                return self.fget.__get__(None, owner)()
-        
         def _get_crud_perms(cls):
             if getattr(cls, '_cached_crud_perms', False):
                 return cls._cached_crud_perms
