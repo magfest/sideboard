@@ -8,7 +8,6 @@ import inspect
 import six
 import sqlalchemy
 from sqlalchemy import event
-from sqlalchemy.dialects import sqlite  # TODO: improve our import overrides such that this is no longer necessary
 from sqlalchemy.ext import declarative
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Query, sessionmaker, configure_mappers
