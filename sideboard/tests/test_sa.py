@@ -317,7 +317,7 @@ class TestCrudRead(object):
         actual = Session.crud.read(query, data)
         assert len(expected) == actual['total']
         assert sorted(expected, key=lambda m: m.get('id', m.get('_model'))) \
-           ==  sorted(actual['results'],key=lambda m: m.get('id', m.get('_model')))
+           ==  sorted(actual['results'], key=lambda m: m.get('id', m.get('_model')))
 
     def test_subquery(self):
         results = Session.crud.read({
