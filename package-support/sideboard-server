@@ -1,0 +1,110 @@
+#!/bin/bash
+
+RETVAL=0
+prog="sideboard"
+
+DESC=sideboard
+VENV=/opt/sideboard
+PYTHON=$VENV/bin/python
+CHERRYD=$VENV/bin/cherryd
+USER=sideboard
+PID_FILE=/var/run/sideboard/$DESC.pid
+LOCK_FILE=/var/run/sideboard/$DESC.lock
+
+OPTIONS="-d --pidfile=$PID_FILE --import=sideboard.server"
+
+isrunning() {
+    PID=`cat $PID_FILE 2>/dev/null`
+    if [ -n "$PID" ]; then
+        EXISTS=`ps aux | grep $PID | grep -v grep`
+       	if [ -n	"$EXISTS" ]; then
+            RETVAL=0
+       	else
+       	    RETVAL=1
+       	fi
+    else
+       	RETVAL=1
+    fi
+    return $RETVAL
+}
+
+start() {
+    if isrunning; then
+        echo "Starting $prog: $prog is already running [FAIL]"
+        RETVAL=1
+    else
+        echo -n $"Starting $prog: "
+        sudo -u $USER $CHERRYD $OPTIONS
+        RETVAL=$?
+        if [ $RETVAL -eq 0 ]; then
+            touch $LOCK_FILE
+            echo '[OK]'
+       	else
+            echo '[FAIL]'
+        fi
+    fi
+    return $RETVAL
+}
+
+stop() {
+    PID=`cat $PID_FILE 2>/dev/null`
+    if [ -n "$PID" ]; then
+        echo -n $"Shutting down $prog: "
+        kill $PID
+        sleep 5
+        if isrunning; then
+            echo '[FAIL]'
+            RETVAL=1
+        else
+            rm -f $LOCK_FILE
+            echo '[OK]'
+            RETVAL=0
+        fi
+    else
+        echo "$prog is not running"
+        RETVAL=1
+    fi
+    return $RETVAL
+}
+
+restart() {
+    stop
+    start
+}
+
+condrestart() {
+    [-e $LOCK_FILE] && restart || :
+}
+
+status() {
+    PID=`cat $PID_FILE 2>/dev/null`
+    if [ -n "$PID" ]; then
+        echo "$prog is running with pid $PID"
+        RETVAL=0
+    else
+        echo "$prog is not running"
+        RETVAL=1
+    fi
+    return $RETVAL
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    status)
+        status
+        ;;
+    restart)
+        restart
+        ;;
+    condrestart|try-restart)
+        condrestart
+        ;;
+    *)
+        echo $"Usage: $0 {start|stop|status|restart|condrestart}"
+        RETVAL=1
+esac

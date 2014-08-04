@@ -1,0 +1,13 @@
+description: Sideboard Framework
+name: sideboard
+version: 0.1.0
+before_install: package-support/preinstall.sh
+config_files:
+  /etc/sideboard/sideboard-server.cfg: package-support/sideboard-server.cfg
+  /etc/init.d/sideboard-server: package-support/sideboard-server
+build_dependencies:
+  - rpm-build
+  - prelink
+  - ruby-devel
+run_dependencies:
+  - python
