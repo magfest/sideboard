@@ -80,6 +80,7 @@ TEMPLATES = {
     '{% if webapp %}{{ module }}/templates/index.html{% endif %}': ('templates', 'index.html.template'),
     'MANIFEST.in': ('templates', 'MANIFEST.in.template'),
     '.gitignore': ('templates', '.gitignore.template'),
+    'fabfile.py': ('templates', 'fabfile.py.template'),
+    'package-support/{{ plugin }}.cfg': ('templates', 'plugin_name.cfg.template'),
     '{% if cli %}{{ module }}/cli.py{% endif %}': ('templates', 'cli.py.template'),
 }
-

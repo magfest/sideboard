@@ -402,6 +402,7 @@ class WebSocketChecker(WebSocketTool):
 cherrypy.tools.websockets = WebSocketChecker()
 
 websocket_plugin = WebSocketPlugin(cherrypy.engine)
+WebSocketPlugin.start.__func__.priority = 66
 websocket_plugin.subscribe()
 
 broadcaster = Caller(WebSocketDispatcher.broadcast)
