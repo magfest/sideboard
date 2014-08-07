@@ -152,7 +152,7 @@ class SideboardRpcWebSocket(SideboardWebSocket):
 def reset_threadlocal():
     threadlocal.reset(username=cherrypy.session.get('username'))
 
-cherrypy.tools.reset_threadlocal = cherrypy.Tool('before_handler', reset_threadlocal)
+cherrypy.tools.reset_threadlocal = cherrypy.Tool('before_handler', reset_threadlocal, priority=51)
 
 
 app_config = {
