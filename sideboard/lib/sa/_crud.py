@@ -1512,7 +1512,7 @@ class CrudMixin(object):
         # getattr so as to avoid any "hilarious" encode errors for non-ascii
         # characters
         u = '<%s%s>' % (self.__class__.__name__, kwargs_output)
-        return u if six.PY3 else e.encode('utf-8')
+        return u if six.PY3 else u.encode('utf-8')
 
 
 def _crud_read_validator(self, name):

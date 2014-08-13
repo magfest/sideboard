@@ -23,6 +23,8 @@ def package(package_type):
     _make_postinstall_script()
     fpm('-t', package_type,
         '-s', 'dir',
+        '--{}-user'.format(package_type), 'sideboard',
+        '--{}-group'.format(package_type), 'sideboard',
         '--name', 'sideboard-{}'.format(package_name),
         '--version', plugin.__version__,
         '--depends', 'sideboard >= {}'.format(sideboard.__version__),

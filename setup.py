@@ -1,3 +1,4 @@
+import sys
 import os.path
 from setuptools import setup, find_packages
 
@@ -11,6 +12,11 @@ with open(os.path.join(__here__, pkg_name, '_version.py')) as version:
 req_data = open(os.path.join(__here__, 'requirements.txt')).read()
 requires = [r.strip() for r in req_data.split() if r.strip() != '']
 requires = list(reversed(requires))
+
+# temporary workaround for a Python 2 CherryPy bug, for which we opened a pull request:
+# https://bitbucket.org/cherrypy/cherrypy/pull-request/85/1285-python-2-now-accepts-both-bytestrings/
+if sys.version_info[0] == 2:
+    requires = ['CherryPy==3.2.2' if 'cherrypy' in r.lower() else r for r in requires]
 
 if __name__ == '__main__':
     setup(
