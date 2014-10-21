@@ -1,7 +1,0 @@
-setup.py
-rdflib3_1_0/__init__.py
-rdflib3_1_0.egg-info/PKG-INFO
-rdflib3_1_0.egg-info/SOURCES.txt
-rdflib3_1_0.egg-info/dependency_links.txt
-rdflib3_1_0.egg-info/not-zip-safe
-rdflib3_1_0.egg-info/top_level.txt
