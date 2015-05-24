@@ -74,8 +74,9 @@ def make_venv():
     develop_sideboard()
 
 def run_setup_py(path):
-    sh('{python_path} {setup_path} develop'
+    sh('cd {path} && {python_path} {setup_path} develop'
         .format(
+            path=path,
             python_path=sys.executable,
             setup_path=join(path, 'setup.py')))
 
