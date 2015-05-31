@@ -12,8 +12,11 @@ from sqlalchemy.ext import declarative
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Query, sessionmaker, configure_mappers
 from sqlalchemy.types import TypeDecorator, String, DateTime, CHAR, Unicode
-
+from sqlalchemy.sql import text
 from sideboard.lib import log, config
+
+from functools import wraps
+import time
 
 __all__ = ['UUID', 'JSON', 'CoerceUTF8', 'declarative_base', 'SessionManager',
            'CrudException', 'crudable', 'crud_validation', 'text_length_validation', 'regex_validation']
@@ -170,10 +173,39 @@ class _SessionInitializer(type):
             if not hasattr(SessionClass, 'session_factory'):
                 SessionClass.session_factory = sessionmaker(bind=SessionClass.engine, autoflush=False, autocommit=False,
                                                             query_cls=SessionClass.QuerySubclass)
-            SessionClass.initialize_db()
+            SessionClass.initialize_db(retry=True)
             SessionClass.crud = make_crud_service(SessionClass)
         return SessionClass
 
+def logp(msg):
+    print(msg, flush=True)
+
+"""
+If decorated function is successful, returns the result
+If it fails, wait a few seconds, then attempt to do it again.
+"""
+def attempt_multiple_times_before_failing(func):
+    @wraps(func)
+    def with_check(*args, **kwargs):
+        logp("++STARTIN")
+        # return func(*args, **kwargs)
+
+        num_tries_remaining = 10
+        while True:
+            try:
+                logp("++trying it...")
+                returnval = func(*args, **kwargs)
+                logp("++GOT IT")
+                return returnval
+            except:
+                num_tries_remaining = num_tries_remaining - 1
+                logp("++failed, trying again")
+                if num_tries_remaining == 0:
+                    logp("++failed permanently")
+                    raise
+                time.sleep(5)
+        return func(*args, **kwargs)
+    return with_check
 
 @six.add_metaclass(_SessionInitializer)
 class SessionManager(object):
@@ -206,12 +238,34 @@ class SessionManager(object):
             self.session.close()
 
     @classmethod
-    def initialize_db(cls, drop=False):
+    def initialize_db(cls, drop=False, create=True, retry=False):
         configure_mappers()
         cls.BaseClass.metadata.bind = cls.engine
+
+        logp("++GOING222")
+
+        if retry:
+            cls.create_and_drop_tables_retry_if_failed(drop, create)
+        else:
+            cls.create_and_drop_tables(drop, create)
+
+    @classmethod
+    @attempt_multiple_times_before_failing
+    def create_and_drop_tables_retry_if_failed(cls, drop, create):
+        return cls.create_and_drop_tables(drop, create)
+
+    @classmethod
+    def create_and_drop_tables(cls, drop, create):
         if drop:
+            logp("++<<dropping tables>>")
             cls.BaseClass.metadata.drop_all(cls.engine, checkfirst=True)
-        cls.BaseClass.metadata.create_all(cls.engine, checkfirst=True)
+        if create:
+            logp("++<<creating tables>>")
+            cls.BaseClass.metadata.create_all(cls.engine, checkfirst=True)
+
+            result = cls.engine.execute(text("select * from pg_tables"))
+            for row in result:
+                logp(row)
 
     @classmethod
     def all_models(cls):
