@@ -73,9 +73,28 @@ def make_venv():
     bootstrap_venv(__here__ / path('env'), 'sideboard')
     develop_sideboard()
 
+def install_pip_requirement(dir_of_requirements_txt):
+    path_to_pip = __here__ / path('env/bin/pip3')
+    sh('{pip} install -e {dir_of_requirements_txt}'
+        .format(
+            pip=path_to_pip,
+            dir_of_requirements_txt=dir_of_requirements_txt))
+
+@task
+def install_pip_requirements():
+    install_pip_requirement(__here__)
+    for pdir in collect_plugin_dirs():
+        install_pip_requirement(pdir)
+
+def run_setup_py(path):
+    sh('cd {path} && {python_path} {setup_path} develop'
+        .format(
+            path=path,
+            python_path=sys.executable,
+            setup_path=join(path, 'setup.py')))
+
 def develop_sideboard():
-    # TODO: this is very hard-coded and should be done better
-    sh('{python_path} setup.py develop'.format(python_path=join('env', 'bin', 'python')))
+    run_setup_py(__here__)
 
 @task
 def pull_plugins():
@@ -175,14 +194,6 @@ def create_plugin(options):
     skeleton.create_plugin(PLUGINS_DIR, plugin_name, **kwargs)
     print('{} successfully created'.format(options.create_plugin.name))
 
-@task
-def install_deps():
-    develop_sideboard()
-    for pdir in collect_plugin_dirs():
-        sh('cd {pdir} && {python_path} {setup_path} develop'
-           .format(pdir=pdir,
-                   python_path=join(__here__, 'env', 'bin', 'python'),
-                   setup_path=join(pdir, 'setup.py')))
 
 @task
 def clean():
