@@ -73,18 +73,12 @@ def make_venv():
     bootstrap_venv(__here__ / path('env'), 'sideboard')
     develop_sideboard()
 
-def install_pip_requirement(dir_of_requirements_txt):
+def install_pip_requirements_in_dir(dir_of_requirements_txt):
     path_to_pip = __here__ / path('env/bin/pip3')
     sh('{pip} install -e {dir_of_requirements_txt}'
         .format(
             pip=path_to_pip,
             dir_of_requirements_txt=dir_of_requirements_txt))
-
-@task
-def install_pip_requirements():
-    install_pip_requirement(__here__)
-    for pdir in collect_plugin_dirs():
-        install_pip_requirement(pdir)
 
 def run_setup_py(path):
     sh('cd {path} && {python_path} {setup_path} develop'
@@ -194,6 +188,11 @@ def create_plugin(options):
     skeleton.create_plugin(PLUGINS_DIR, plugin_name, **kwargs)
     print('{} successfully created'.format(options.create_plugin.name))
 
+@task
+def install_deps():
+    install_pip_requirements_in_dir(__here__)
+    for pdir in collect_plugin_dirs():
+        install_pip_requirements_in_dir(pdir)
 
 @task
 def clean():
