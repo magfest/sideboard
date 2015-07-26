@@ -74,7 +74,7 @@ def make_venv():
     develop_sideboard()
 
 def install_pip_requirements_in_dir(dir_of_requirements_txt):
-    path_to_pip = __here__ / path('env/bin/pip3')
+    path_to_pip = __here__ / path('env/bin/pip')
     sh('{pip} install -e {dir_of_requirements_txt}'
         .format(
             pip=path_to_pip,
