@@ -73,6 +73,13 @@ def make_venv():
     bootstrap_venv(__here__ / path('env'), 'sideboard')
     develop_sideboard()
 
+def install_pip_requirements_in_dir(dir_of_requirements_txt):
+    path_to_pip = __here__ / path('env/bin/pip')
+    sh('{pip} install -e {dir_of_requirements_txt}'
+        .format(
+            pip=path_to_pip,
+            dir_of_requirements_txt=dir_of_requirements_txt))
+
 def run_setup_py(path):
     sh('cd {path} && {python_path} {setup_path} develop'
         .format(
@@ -183,9 +190,9 @@ def create_plugin(options):
 
 @task
 def install_deps():
-    develop_sideboard()
+    install_pip_requirements_in_dir(__here__)
     for pdir in collect_plugin_dirs():
-        run_setup_py(pdir)
+        install_pip_requirements_in_dir(pdir)
 
 @task
 def clean():
