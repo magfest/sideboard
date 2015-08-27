@@ -12,6 +12,7 @@ from sqlalchemy.ext import declarative
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Query, sessionmaker, configure_mappers
 from sqlalchemy.types import TypeDecorator, String, DateTime, CHAR, Unicode
+from sqlalchemy.engine import reflection
 
 from sideboard.lib import log, config
 
@@ -206,11 +207,48 @@ class SessionManager(object):
             self.session.close()
 
     @classmethod
+    def drop_all_tables(cls):
+        # From http://www.mbeckler.org/blog/?p=218 and http://www.sqlalchemy.org/trac/wiki/UsageRecipes/DropEverything
+
+        conn = cls.engine.connect()
+        trans = conn.begin()
+
+        inspector = reflection.Inspector.from_engine(cls.engine)
+
+        # gather all data first before dropping anything.
+        # some DBs lock after things have been dropped in
+        # a transaction.
+        metadata = sqlalchemy.schema.MetaData()
+
+        tbs = []
+        all_fks = []
+
+        for table_name in inspector.get_table_names():
+            fks = []
+            for fk in inspector.get_foreign_keys(table_name):
+                if not fk['name']:
+                    continue
+                fks.append(
+                    sqlalchemy.schema.ForeignKeyConstraint((),(),name=fk['name'])
+                    )
+            t = sqlalchemy.schema.Table(table_name, metadata, *fks)
+            tbs.append(t)
+            all_fks.extend(fks)
+
+        for fkc in all_fks:
+            conn.execute(sqlalchemy.schema.DropConstraint(fkc))
+
+        for table in tbs:
+            conn.execute(sqlalchemy.schema.DropTable(table))
+
+        trans.commit()
+
+    @classmethod
     def initialize_db(cls, drop=False):
         configure_mappers()
         cls.BaseClass.metadata.bind = cls.engine
         if drop:
-            cls.BaseClass.metadata.drop_all(cls.engine, checkfirst=True)
+            cls.drop_all_tables()
         cls.BaseClass.metadata.create_all(cls.engine, checkfirst=True)
 
     @classmethod
