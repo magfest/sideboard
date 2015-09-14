@@ -31,7 +31,7 @@ RUN curl -SLO "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-
 	&& echo '{ "allow_root": true }' > /root/.bowerrc \
 	&& npm cache clear
 
-ADD * /app/
+ADD . /app/
 RUN python3 setup.py develop
 
 CMD python3 /app/sideboard/run_server.py
