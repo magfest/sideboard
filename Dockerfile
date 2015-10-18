@@ -32,7 +32,9 @@ RUN curl -SLO "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-
 	&& npm cache clear
 
 ADD . /app/
-RUN python3 setup.py develop
+RUN pip3 install virtualenv \
+  && virtualenv --always-copy /app/env \
+	&& RUN paver install_deps
 
 CMD python3 /app/sideboard/run_server.py
 EXPOSE 8282
