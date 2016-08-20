@@ -1,6 +1,8 @@
 from __future__ import unicode_literals
 import time
 import heapq
+import prctl
+import threading
 from warnings import warn
 from threading import Thread, Timer, Event, Lock
 
@@ -8,6 +10,20 @@ from six.moves.queue import Queue, Empty
 
 from sideboard.lib import log, on_startup, on_shutdown
 
+# inject our own code at the start of every thread's start() method which sets the thread name via prctl().
+# This is an optional but nice thing. Python thread names will now be shown in
+# external system tools like 'top', '/proc', etc.
+def _thread_name_insert(self):
+    if self.name:
+        # linux doesn't allow thread names > 15 chars, and we ideally want to see the end of the name.
+        # attempt to shorten the name if we need to.
+        shorter_name = self.name if len(self.name) < 15 else self.name.replace('CP Server Thread', 'CPServ')
+        prctl.set_name(shorter_name)
+    threading.Thread._bootstrap_inner_original(self)
+threading.Thread._bootstrap_inner_original = threading.Thread._bootstrap_inner
+threading.Thread._bootstrap_inner = _thread_name_insert
+
+prctl.set_name("sideboard")
 
 class DaemonTask(object):
     def __init__(self, func, interval=0.1, threads=1):
