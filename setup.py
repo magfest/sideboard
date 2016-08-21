@@ -18,6 +18,10 @@ requires = list(reversed(requires))
 if sys.version_info[0] == 2:
     requires = ['CherryPy==3.2.2' if 'cherrypy' in r.lower() else r for r in requires]
 
+# We use a Python3-only library to set thread names
+if sys.version_info[0] == 3:
+    requires.append('python-prctl==1.6.1')
+
 if __name__ == '__main__':
     setup(
         name=pkg_name,
