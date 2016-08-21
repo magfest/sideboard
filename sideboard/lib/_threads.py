@@ -1,7 +1,9 @@
 from __future__ import unicode_literals
 import time
 import heapq
+import prctl
 import threading
+import sys
 from warnings import warn
 from threading import Thread, Timer, Event, Lock
 
@@ -9,23 +11,25 @@ from six.moves.queue import Queue, Empty
 
 from sideboard.lib import log, on_startup, on_shutdown
 
-try:
-    import prctl  # only runs on Python 3
-except ImportError:
-    pass
-else:
-    # inject our own code at the start of every thread's start() method which sets the thread name via prctl().
-    # Python thread names will now be shown in external system tools like 'top', '/proc', etc.
-    def _thread_name_insert(self):
-        if self.name:
-            # linux doesn't allow thread names > 15 chars, and we ideally want to see the end of the name.
-            # attempt to shorten the name if we need to.
-            shorter_name = self.name if len(self.name) < 15 else self.name.replace('CP Server Thread', 'CPServ')
-            prctl.set_name(shorter_name)
-        threading.Thread._bootstrap_inner_original(self)
+
+# inject our own code at the start of every thread's start() method which sets the thread name via prctl().
+# Python thread names will now be shown in external system tools like 'top', '/proc', etc.
+def _thread_name_insert(self):
+    if self.name:
+        # linux doesn't allow thread names > 15 chars, and we ideally want to see the end of the name.
+        # attempt to shorten the name if we need to.
+        shorter_name = self.name if len(self.name) < 15 else self.name.replace('CP Server Thread', 'CPServ')
+        prctl.set_name(shorter_name)
+    threading.Thread._bootstrap_inner_original(self)
+if sys.version_info[0] == 3:
     threading.Thread._bootstrap_inner_original = threading.Thread._bootstrap_inner
     threading.Thread._bootstrap_inner = _thread_name_insert
-    prctl.set_name('sideboard')
+else:
+    threading.Thread._bootstrap_inner_original = threading.Thread._Thread__bootstrap
+    threading.Thread._Thread__bootstrap = _thread_name_insert
+
+# set the name of the main thread
+prctl.set_name('sideboard_main')
 
 
 class DaemonTask(object):
