@@ -10,11 +10,13 @@ from sideboard.lib import log, on_startup, on_shutdown
 
 
 class DaemonTask(object):
-    def __init__(self, func, interval=0.1, threads=1):
+    def __init__(self, func, interval=0.1, threads=1, name=None):
         self.lock = Lock()
         self.threads = []
         self.stopped = Event()
         self.func, self.interval, self.thread_count = func, interval, threads
+        self.name = name or self.func.__name__
+
         on_startup(self.start)
         on_shutdown(self.stop)
 
@@ -39,7 +41,7 @@ class DaemonTask(object):
                 del self.threads[:]
                 for i in range(self.thread_count):
                     t = Thread(target = self.run)
-                    t.name = '{}-{}'.format(self.func.__name__, i + 1)
+                    t.name = '{}-{}'.format(self.name, i + 1)
                     t.daemon = True
                     t.start()
                     self.threads.append(t)
