@@ -15,7 +15,7 @@ class DaemonTask(object):
         self.threads = []
         self.stopped = Event()
         self.func, self.interval, self.thread_count = func, interval, threads
-        self.name = name if name else self.func.__name__
+        self.name = name or self.func.__name__
 
         on_startup(self.start)
         on_shutdown(self.stop)
