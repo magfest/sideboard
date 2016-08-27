@@ -1,9 +1,7 @@
 from __future__ import unicode_literals
-from debugger import debugger_helpers_all_init
+from sideboard.debugging import debugger_helpers_all_init
 
 import cherrypy
-
-import sideboard.server
 
 if __name__ == '__main__':
     debugger_helpers_all_init()
