@@ -17,3 +17,4 @@ wheel==0.24.0
 pip==1.5.6
 sh==1.09
 python-prctl==1.6.1
+psutil==4.3.0
