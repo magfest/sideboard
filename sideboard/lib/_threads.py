@@ -26,7 +26,7 @@ def _get_linux_thread_tid():
     """
     try:
         if not platform.system().startswith('Linux'):
-            raise ValueError
+            raise ValueError('Can only get thread id on Linux systems')
         syscalls = {
           'i386':   224,   # unistd_32.h: #define __NR_gettid 224
           'x86_64': 186,   # unistd_64.h: #define __NR_gettid 186
