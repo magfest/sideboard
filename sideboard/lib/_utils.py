@@ -80,6 +80,26 @@ def cached_property(func):
     return caching
 
 
+def request_cached_property(func):
+    """
+    Sometimes we want a property to be cached for the duration of a request,
+    with concurrent requests each having their own cached version.  This does
+    that via the threadlocal class, such that each HTTP request CherryPy serves
+    and each RPC request served via websocket or JSON-RPC will have its own
+    cached value, which is cleared and then re-generated on later requests.
+    """
+    name = func.__module__ + '.' + func.__name__
+    @property
+    @wraps(func)
+    def with_caching(self):
+        val = threadlocal.get(name)
+        if val is None:
+            val = func(self)
+            threadlocal.set(name, val)
+        return val
+    return with_caching
+
+
 class _class_property(property):
     def __get__(self, cls, owner):
         return self.fget.__get__(None, owner)()

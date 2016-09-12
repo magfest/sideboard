@@ -73,6 +73,7 @@ TEMPLATES = {
     'requirements.txt': ('templates', 'requirements.txt.template'),
     'setup.cfg': ('templates', 'setup.cfg.template'),
     'setup.py': ('templates', 'setup.py.template'),
+    'conftest.py': ('templates', 'conftest.py.template'),
     '{{ module }}/__init__.py': ('templates', '__init__.py.template'),
     '{{ module }}/tests/__init__.py': ('templates', 'tests-__init__.py.template'),
     '{% if sqlalchemy %}{{ module }}/sa.py{% endif %}': ('templates', 'sa.py.template'),

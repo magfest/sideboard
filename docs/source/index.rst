@@ -26,7 +26,7 @@ There are a lot of websites out there which tell you whether the world has ended
 
 * `HasTheWorldEnded.webs.com <http://hastheworldended.webs.com/>`_
 
-* `HasTheLargeHadronCollidorDestroyedTheWorldYet.com <http://hasthelargehadroncollidordestroyedtheworldyet.com/>`_
+* `HasTheLargeHadronColliderDestroyedTheWorldYet.com <http://hasthelargehadroncolliderdestroyedtheworldyet.com/>`_
 
 Our plugin will periodically check those websites, store the results of our checks in our database, expose a service which allows others to make RPC calls to check our aggregated result, and mount a website which shows the results to an authenticated user in their web browser.
 
@@ -73,7 +73,8 @@ This will create the following directory structure in your ``plugins`` directory
 
 .. code-block:: none
 
-    .
+    ragnarok/
+    |-- conftest.py
     |-- development-defaults.ini
     |-- docs
     |   |-- _build
@@ -82,7 +83,10 @@ This will create the following directory structure in your ``plugins`` directory
     |   |-- Makefile
     |   |-- _static
     |   `-- _templates
+    |-- fabfile.py
     |-- MANIFEST.in
+    |-- package-support
+    |   `-- ragnarok.cfg
     |-- ragnarok
     |   |-- configspec.ini
     |   |-- __init__.py
@@ -96,6 +100,7 @@ This will create the following directory structure in your ``plugins`` directory
     |-- requirements.txt
     |-- setup.cfg
     `-- setup.py
+
 
 We haven't added any new dependencies to this plugin yet (in its ``requirements.txt`` file), but if we had then we'd run
 
@@ -423,6 +428,61 @@ This approach maintains a Sideboard plugin whose module lives alongside a standa
 From here you can run through the Django tutorial.  You'll be able to visit `<http://localhost:8282/unchained/admin/>`_ to see the Django admin interface, and once you write the "polls" app you'll be able to visit `<http://localhost:8282/unchained/polls>`_ to access its views.  (You don't currently get links to these in the ``/list_plugins`` page of Sideboard.)
 
 Your Django project will be included in your RPM as packaged by your ``fabfile``.
+
+
+
+Writing Unit Tests
+------------------
+
+All of our service methods involve querying our database.  Theoretically we could mock out the database calls, but we'd be testing code paths much closer to our production code if we really perform database queries in our unit tests.  Sideboard makes this easy by giving us some built-in `pytest fixtures <http://pytest.org/latest/fixture.html>`_ for swapping out our configured database with a SQLite database file in ``/tmp``, so we can insert test data and then have it restored at the beginning of every test case.
+
+So let's open up ``conftest.py`` and where the comment instructs you to add your test data, add the following lines:
+
+.. code-block:: python
+
+    session.add(sa.Website(url="http://hastheworldended.webs.com", search_for="NO"))
+    session.add(sa.Website(url="http://hasthelargehadroncolliderdestroyedtheworldyet.com", search_for="NOPE"))
+
+Now we'll have that test data in our test database before each test.  Let's just test our simplest function: the ``service.true_or_false()`` method, since that just returns a boolean.  So we'll open up ``ragnarok/tests/__init__.py`` and replace the contents with the following:
+
+.. code-block:: python
+
+    from __future__ import unicode_literals
+    import pytest
+    from ragnarok import sa, service
+
+    def _insert_result(world_ended):
+        with sa.Session() as session:
+            website = session.query(sa.Website).first()
+            session.add(sa.Result(website=website, world_ended=world_ended))
+
+    @pytest.fixture
+    def life(db):
+        _insert_result(False)
+
+    @pytest.fixture
+    def death(db):
+        _insert_result(True)
+
+    def test_no_result():
+        assert not service.true_or_false()
+
+    def test_world_not_ended(life):
+        assert not service.true_or_false()
+
+    def test_world_has_ended(death):
+        assert service.true_or_false()
+
+    def test_mixed_results(life, death):
+        assert service.true_or_false()
+
+Now with our virtualenv activated, we can run ``py.test`` in the ``ragnarok`` directory and it'll run these 4 tests.  Let's review what we're testing:
+* the world has not ended if we've not downloaded any results
+* the world has not ended if we've downloaded only a "world has not ended" result
+* the world has ended if we've downloaded only a "world has ended" result
+* the world has ended if we've downloaded a mix of results
+
+Our ``life`` and ``death`` fixtures are injected to provide the underlying database state.
 
 
 
@@ -1251,8 +1311,51 @@ CRUD
 Tests
 =====
 
-Sideboard has a lot of great test helpers to make it easier to write unit tests for your plugins.
+The tutorial describes the use of our provided `pytest fixtures <http://pytest.org/latest/fixture.html>`_ to write meaningful tests which actually perform database queries against a test SQLite database.
 
-They're really awesome.
+Here we'll briefly document the fixtures that Sideboard provides:
 
-They're also not documented yet.
+.. function:: service_patcher()
+
+    Pytest fixture which is a function you can use to override a service with a test service.  You can pass either an object (which will be registered as the replacement service) or a dictionary (which will be converted to an object).  This override will be cleaned up after the test.  For example:
+
+    .. code-block:: python
+
+        from sideboard.lib import services
+        from sideboard.tests import service_patcher
+
+        foo, bar = services.foo, services.bar
+
+        class mock_foo(object):
+            def get_num(self):
+                return 5
+
+        mock_bar = {'get_num': lambda: 6}
+
+        @pytest.fixture
+        def mock_foo_and_bar(service_patcher):
+            service_patcher('foo', mock_foo())
+            service_patcher('bar', mock_bar)
+
+        def test_foo_and_bar(mock_foo_and_bar):
+            assert 11 == foo.get_num() + bar.get_num()
+
+.. function:: config_patcher()
+
+    Pytest fixture which can be used to override your configuration for testing, which restores the original configuration at the end of the test.  Here's a simple example:
+
+    .. code-block:: python
+
+        from ragnarok import config
+        from sideboard.tests import config_patcher
+
+        def message():
+            return 'Hello ' + config['default.name']
+
+        def test_message(config_patcher):
+            config_patcher('World', 'default.name', config=config)
+            assert 'Hello World' == message()
+
+.. function:: sideboard.tests.patch_session(Session)
+
+    This is invoked in the ``conftest.py`` that our ``paver create_plugin`` provides, and you probably don't need to use this anywhere else.  This function monkeypatches your ``Session`` class to use a SQLite database in ``/tmp`` instead of whatever you already had configured.

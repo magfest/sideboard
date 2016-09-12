@@ -18,7 +18,7 @@ __all__ = ['log',
            'stopped', 'on_startup', 'on_shutdown', 'mainloop', 'ajax', 'renders_template', 'render_with_templates',
            'DaemonTask', 'Caller', 'GenericCaller', 'TimeDelayQueue',
            'WebSocket', 'Model', 'Subscription', 'MultiSubscription',
-           'listify', 'serializer', 'cached_property', 'is_listy', 'entry_point',
+           'listify', 'serializer', 'cached_property', 'request_cached_property', 'is_listy', 'entry_point',
            'threadlocal', 'subscribes', 'locally_subscribes', 'notifies', 'notify']
 if six.PY2:
     __all__ = [s.encode('ascii') for s in __all__]

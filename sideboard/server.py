@@ -153,7 +153,7 @@ class SideboardRpcWebSocket(SideboardWebSocket):
 def reset_threadlocal():
     threadlocal.reset(username=cherrypy.session.get('username'))
 
-cherrypy.tools.reset_threadlocal = cherrypy.Tool('before_handler', reset_threadlocal)
+cherrypy.tools.reset_threadlocal = cherrypy.Tool('before_handler', reset_threadlocal, priority=51)
 
 
 app_config = {
@@ -206,3 +206,5 @@ def mount(root, script_name='', config=None):
 orig_mount = cherrypy.tree.mount
 cherrypy.tree.mount = mount
 cherrypy.tree.mount(Root(), '', app_config)
+
+del sys.modules['six.moves.winreg']  # kludgy workaround for CherryPy's autoreloader erroring on winreg

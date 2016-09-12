@@ -54,7 +54,7 @@ class CoerceUTF8(TypeDecorator):
     impl = Unicode
 
     def process_bind_param(self, value, dialect):
-        if isinstance(value, str):
+        if isinstance(value, type(b'')):
             value = value.decode('utf-8')
         return value
 

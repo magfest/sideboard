@@ -1,0 +1,21 @@
+import sideboard
+{% if sqlalchemy %}
+import shutil
+import pytest
+from {{ plugin }} import sa
+from sideboard.tests import patch_session
+
+@pytest.fixture(scope='session', autouse=True)
+def init_db(request):
+    patch_session(sa.Session, request)  # swap out your database for SQLite
+    with sa.Session() as session:
+        # You can initialize test data here, which will be inserted once when
+        # your tests start (which might be really slow) but then before each
+        # test case the database is restored again, which is really fast.
+        pass
+
+@pytest.fixture(autouse=True)
+def db(request, init_db):
+    shutil.copy('/tmp/{{ plugin }}.db', '/tmp/{{ plugin }}.db.backup')
+    request.addfinalizer(lambda: shutil.move('/tmp/{{ plugin }}.db.backup', '/tmp/{{ plugin }}.db'))
+{% endif %}
