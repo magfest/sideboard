@@ -88,6 +88,7 @@ def request_cached_property(func):
     and each RPC request served via websocket or JSON-RPC will have its own
     cached value, which is cleared and then re-generated on later requests.
     """
+    from sideboard.lib import threadlocal
     name = func.__module__ + '.' + func.__name__
     @property
     @wraps(func)
