@@ -1,4 +1,5 @@
 from __future__ import unicode_literals
+import time
 from os.path import abspath, basename, dirname, join
 
 from sh import pip, fpm, chmod
@@ -12,22 +13,30 @@ POSTINSTALL = '/tmp/postinstall.sh'
 def _make_postinstall_script():
     with open(POSTINSTALL, 'w') as f:
         f.write('#!/bin/bash\n')
-        f.write('/opt/sideboard/bin/pip install --use-wheel --find-links /opt/sideboard/plugins/{package_name}/wheelhouse/ -r /opt/sideboard/plugins/{package_name}/requirements.txt'
+        f.write('set -e\n')
+        f.write('source /opt/sideboard/bin/activate && /opt/sideboard/bin/pip install --use-wheel --find-links /opt/sideboard/plugins/{package_name}/wheelhouse/ -r /opt/sideboard/plugins/{package_name}/requirements.txt\n'
                 .format(package_name=package_name))
+        f.write('chown -R sideboard.sideboard /opt/sideboard\n')
     chmod('755', POSTINSTALL)
 
-def package(package_type):
+def package(package_type, iteration='testing'):
     import sideboard
     plugin = __import__(plugin_name)
     pip('wheel', r='requirements.txt')
     _make_postinstall_script()
+    if iteration == 'testing':
+        iteration = '0.{}'.format(int(time.time()))
     fpm('-t', package_type,
         '-s', 'dir',
         '--name', 'sideboard-{}'.format(package_name),
         '--version', plugin.__version__,
+        '--license', 'COMPANY-PROPRIETARY',
+        '--iteration', iteration,
         '--depends', 'sideboard >= {}'.format(sideboard.__version__),
         '--after-install', POSTINSTALL,
+        '--config-files', '/etc/sideboard/plugins.d/{package_name}.cfg'.format(package_name=package_name),
         './package-support/{package_name}.cfg=/etc/sideboard/plugins.d/{package_name}.cfg'.format(package_name=package_name),
         './requirements.txt=/opt/sideboard/plugins/{}/requirements.txt'.format(package_name),
-        './wheelhouse=/opt/sideboard/plugins/{}'.format(package_name),
+        './wheelhouse=/opt/sideboard/plugins/{}'.format(package_name),{% if django %}
+        './{{ django }}=/opt/sideboard/plugins/{}/{{ django }}'.format(package_name),{% endif %}
         './{}=/opt/sideboard/plugins/{}'.format(plugin_name, package_name))

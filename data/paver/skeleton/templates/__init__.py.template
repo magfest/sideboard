@@ -1,8 +1,16 @@
-from __future__ import unicode_literals
-
-{% if webapp %}import cherrypy
-
+from __future__ import unicode_literals{% if django %}
+import os
+import sys
 {% endif %}
+
+{% if webapp or django %}
+import cherrypy
+{% if django %}
+import django
+from django.core.handlers.wsgi import WSGIHandler
+{% endif %}
+{% endif %}
+
 from sideboard.lib import log, parse_config{% if webapp %}, render_with_templates{% endif %}{% if service or sqlalchemy %}, services{% endif %}
 from {{ module }}._version import __version__
 
@@ -13,6 +21,7 @@ from {{ module }} import service
 services.register(service, '{{ module }}')
 
 {% endif %}
+
 {% if sqlalchemy %}
 from {{ module }} import sa
 services.register(sa.Session.crud, '{{ module }}_crud')
@@ -29,4 +38,24 @@ class Root(object):
         }
 
 cherrypy.tree.mount(Root(), '/{{ module }}')
+{% endif %}
+
+{% if django %}
+# add our Django site to our Python path so we can import it
+sys.path.append(os.path.join(config['root'], '{{ django }}'))
+
+# since we're not using mod_wsgi we'll use the env var approach to setting up Django
+os.environ['DJANGO_SETTINGS_MODULE'] = '{{ django }}.settings'
+django.setup()
+cherrypy.tree.graft(WSGIHandler(), '/{{ django }}')
+
+# expose the static files used by the Django admin interface
+# NOTE: if you have Apache serving these files directly then you can remove this part
+class Static(object):
+    admin = cherrypy.tools.staticdir.handler(
+        section="/admin",
+        dir=os.path.dirname(django.__file__) + '/contrib/admin/static/admin'
+    )
+
+cherrypy.tree.mount(Static(), '/{{ django }}/static')
 {% endif %}

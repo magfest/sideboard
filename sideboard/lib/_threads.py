@@ -6,11 +6,11 @@ from threading import Thread, Timer, Event, Lock
 
 from six.moves.queue import Queue, Empty
 
-from sideboard.lib import log, on_startup, on_shutdown
+from sideboard.lib import log, config, on_startup, on_shutdown
 
 
 class DaemonTask(object):
-    def __init__(self, func, interval=0.1, threads=1):
+    def __init__(self, func, interval=None, threads=1):
         self.lock = Lock()
         self.threads = []
         self.stopped = Event()
@@ -29,8 +29,9 @@ class DaemonTask(object):
             except:
                 log.error('unexpected error', exc_info=True)
 
-            if self.interval:
-                self.stopped.wait(self.interval)
+            interval = config['thread_wait_interval'] if self.interval is None else self.interval
+            if interval:
+                self.stopped.wait(interval)
 
     def start(self):
         with self.lock:
@@ -100,7 +101,7 @@ class Caller(DaemonTask):
 
     def call(self):
         try:
-            args, kwargs = self.q.get(timeout = 0.1)
+            args, kwargs = self.q.get(timeout = config['thread_wait_interval'])
             self.callee(*args, **kwargs)
         except Empty:
             pass
@@ -127,7 +128,7 @@ class GenericCaller(DaemonTask):
 
     def call(self):
         try:
-            func, args, kwargs = self.q.get(timeout = 0.1)
+            func, args, kwargs = self.q.get(timeout = config['thread_wait_interval'])
             func(*args, **kwargs)
         except Empty:
             pass

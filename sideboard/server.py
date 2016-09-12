@@ -93,7 +93,8 @@ class Root(object):
                 'paths': []
             }
         for path, app in cherrypy.tree.apps.items():
-            if path:  # exclude what Sideboard itself mounts
+            # exclude what Sideboard itself mounts and grafted mount points
+            if path and hasattr(app, 'root'):
                 plugin = app.root.__module__.split('.')[0]
                 plugin_info[plugin]['paths'].append(path)
         return {
@@ -109,9 +110,9 @@ class Root(object):
 
     json = _make_jsonrpc_handler(services.get_services(), precall=jsonrpc_auth)
     jsonrpc = _make_jsonrpc_handler(services.get_services(),
-                                   precall=lambda body: threadlocal.reset(
-                                       username=cherrypy.session.get('username'),
-                                       client=body.get('websocket_client')))
+                                    precall=lambda body: threadlocal.reset(
+                                        username=cherrypy.session.get('username'),
+                                        client=body.get('websocket_client')))
 
 
 class SideboardWebSocket(WebSocketDispatcher):
@@ -125,7 +126,7 @@ class SideboardWebSocket(WebSocketDispatcher):
     @classmethod
     def check_authentication(cls):
         host, origin = cherrypy.request.headers['host'], cherrypy.request.headers['origin']
-        if ('//' + host) not in origin:
+        if ('//' + host.split(':')[0]) not in origin:
             log.error('Javascript websocket connections must follow same-origin policy; origin {!r} does not match host {!r}', origin, host)
             raise ValueError('Origin and Host headers do not match')
 

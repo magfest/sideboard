@@ -13,6 +13,11 @@ def _configure_logging():
     if os.path.exists(fname):
         logging.config.fileConfig(fname, disable_existing_loggers=True)
     else:
+        # ConfigObj doesn't support interpolation escaping, so we manually work around it here
+        formatters = config['formatters'].dict()
+        for formatter in formatters.values():
+            formatter['format'] = formatter['format'].replace('$$', '%')
+            formatter['datefmt'] = formatter['datefmt'].replace('$$', '%') or None
         logging.config.dictConfig({
         'version': 1,
         'root': {
@@ -24,9 +29,5 @@ def _configure_logging():
             for name, level in config['loggers'].items() if name != 'root'
         },
         'handlers': config['handlers'].dict(),
-        'formatters': {
-            'default': {
-                'format': '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
-            }
-        }
+        'formatters': formatters
     })

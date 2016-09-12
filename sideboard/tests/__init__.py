@@ -31,7 +31,8 @@ def config_patcher(request):
         conf = kwargs.pop('config', config)
         for section in path[:-1]:
             conf = conf[section]
-        request.addfinalizer(lambda: conf.__setitem__(path[-1], value))
+        orig_val = conf[path[-1]]
+        request.addfinalizer(lambda: conf.__setitem__(path[-1], orig_val))
         conf[path[-1]] = value
     return patch_config
 

@@ -65,6 +65,7 @@ def collect_plugin_dirs(module=False):
             else:
                 yield potential_folder
 
+
 @task
 def make_venv():
     """
@@ -73,9 +74,11 @@ def make_venv():
     bootstrap_venv(__here__ / path('env'), 'sideboard')
     develop_sideboard()
 
+
 def develop_sideboard():
     # TODO: this is very hard-coded and should be done better
     sh('{python_path} setup.py develop'.format(python_path=join('env', 'bin', 'python')))
+
 
 @task
 def pull_plugins():
@@ -85,6 +88,7 @@ happen auth-free, or you need to enter your credentials each time
     """
     for plugin_dir in collect_plugin_dirs():
         sh('cd "{}";git pull'.format(plugin_dir))
+
 
 @task
 def assert_all_files_import_unicode_literals():
@@ -106,6 +110,7 @@ this is skipped for Python 3
             print(''.join(all_files_found))
             raise BuildFailure("there were files that didn't include "
                                '"from __future__ import unicode_literals"')
+
 
 @task
 def assert_all_projects_correctly_define_a_version():
@@ -131,6 +136,7 @@ def assert_all_projects_correctly_define_a_version():
 
         raise BuildFailure("there were projects that didn't include correctly specify __version__")
 
+
 @task
 @needs(['assert_all_files_import_unicode_literals',
         'assert_all_projects_correctly_define_a_version'])
@@ -139,6 +145,7 @@ def run_all_assertions():
     run all the assertion tasks that sideboard supports
     """
 
+
 @task
 @cmdopts([
     ('name=', 'n', 'name of the plugin to create'),
@@ -146,6 +153,8 @@ def run_all_assertions():
     ('no_webapp', 'w', 'do not expose webpages in the plugin'),
     ('no_sqlalchemy', 'a', 'do not use SQLAlchemy in the plugin'),
     ('no_service', 'r', 'do not expose a service in the plugin'),
+    ('no_sphinx', 's', 'do not generate Sphinx docs'),
+    ('django=', 'j', 'create a Django project alongside the plugin with this name'),
     ('cli', 'c', 'make this a cli application; implies -w/-r')
 ])
 def create_plugin(options):
@@ -162,18 +171,20 @@ def create_plugin(options):
     if getattr(options.create_plugin, 'drop', False) and (PLUGINS_DIR / path(plugin_name.replace('_', '-'))).exists():
         # rmtree fails if the dir doesn't exist apparently
         (PLUGINS_DIR / path(plugin_name.replace('_', '-'))).rmtree()
-    
+
     kwargs = {}
-    for opt in ['webapp', 'sqlalchemy', 'service']:
+    for opt in ['webapp', 'sqlalchemy', 'service', 'sphinx']:
         kwargs[opt] = not getattr(options.create_plugin, 'no_' + opt, False)
     kwargs['cli'] = getattr(options.create_plugin, 'cli', False)
+    kwargs['django'] = getattr(options.create_plugin, 'django', None)
     if kwargs['cli']:
         kwargs['webapp'] = False
         kwargs['service'] = False
-    
+
     from data.paver import skeleton
     skeleton.create_plugin(PLUGINS_DIR, plugin_name, **kwargs)
     print('{} successfully created'.format(options.create_plugin.name))
+
 
 @task
 def install_deps():
@@ -183,6 +194,7 @@ def install_deps():
            .format(pdir=pdir,
                    python_path=join(__here__, 'env', 'bin', 'python'),
                    setup_path=join(pdir, 'setup.py')))
+
 
 @task
 def clean():

@@ -175,16 +175,11 @@ from sqlalchemy.orm.properties import ColumnProperty, RelationshipProperty
 from sqlalchemy.types import Boolean, Text, Integer, String, UnicodeText, DateTime
 from sqlalchemy.sql.expression import alias, cast, label, bindparam, and_, or_, asc, desc, literal, text, union, join
 
-from sideboard.lib import log, notify, listify, threadlocal, serializer, is_listy
+from sideboard.lib import log, notify, listify, threadlocal, serializer, is_listy, class_property
 
 
 class CrudException(Exception):
     pass
-
-
-class ClassProperty(property):
-    def __get__(self, cls, owner):
-        return self.fget.__get__(None, owner)()
 
 
 def listify_with_count(x, count=None):
@@ -1269,8 +1264,7 @@ class CrudMixin(object):
             self._to_dict_type_cast_mapping = defaultdict(lambda: lambda x: x, type_casts)
         return self._to_dict_type_cast_mapping
 
-    @ClassProperty
-    @classmethod
+    @class_property
     def to_dict_default_attrs(cls):
         attr_names = []
         for name in collect_ancestor_attributes(cls, terminal_cls=cls.BaseClass):
@@ -1512,7 +1506,7 @@ class CrudMixin(object):
         # getattr so as to avoid any "hilarious" encode errors for non-ascii
         # characters
         u = '<%s%s>' % (self.__class__.__name__, kwargs_output)
-        return u if six.PY3 else e.encode('utf-8')
+        return u if six.PY3 else u.encode('utf-8')
 
 
 def _crud_read_validator(self, name):
@@ -1867,9 +1861,9 @@ class crudable(object):
         def _type_map(cls):
             return dict(cls.type_map_defaults, **cls.type_map)
 
-        cls._type_map = ClassProperty(classmethod(_type_map))
-        cls._crud_spec = ClassProperty(classmethod(_get_crud_spec))
-        cls._crud_perms = ClassProperty(classmethod(_get_crud_perms))
+        cls._type_map = class_property(_type_map)
+        cls._crud_spec = class_property(_get_crud_spec)
+        cls._crud_perms = class_property(_get_crud_perms)
         return cls
 
 
