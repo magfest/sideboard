@@ -56,7 +56,7 @@ Let's start by cloning the Sideboard repo and running it without any plugins:
 
 .. code-block:: none
 
-    $ git clone https://github.com/appliedsec/sideboard.git
+    $ git clone https://github.com/magfest/sideboard
     $ cd sideboard/
     $ paver make_venv
     $ ./env/bin/python sideboard/run_server.py
