@@ -1,22 +1,25 @@
 from __future__ import unicode_literals
-import time
-import platform
-import psutil
-import heapq
-import prctl
-import ctypes
 import sys
+import time
+import heapq
+import ctypes
+import platform
 import traceback
-from sideboard.debugging import register_diagnostics_status_function
+import threading
 from warnings import warn
 from threading import Thread, Timer, Event, Lock
 
+import six
 from six.moves.queue import Queue, Empty
 
 from sideboard.lib import log, config, on_startup, on_shutdown
+from sideboard.debugging import register_diagnostics_status_function
 
-
-import threading
+try:
+    import prctl
+    import psutil
+except ImportError:
+    prctl = psutil = None  # For platforms without this support.
 
 
 def _get_linux_thread_tid():
@@ -40,7 +43,7 @@ def _get_linux_thread_tid():
 
 def _set_current_thread_ids_from(thread):
     # thread ID part 1: set externally visible thread name in /proc/[pid]/tasks/[tid]/comm to our internal name
-    if thread.name:
+    if prctl and thread.name:
         # linux doesn't allow thread names > 15 chars, and we ideally want to see the end of the name.
         # attempt to shorten the name if we need to.
         shorter_name = thread.name if len(thread.name) < 15 else thread.name.replace('CP Server Thread', 'CPServ')
@@ -57,7 +60,7 @@ def _thread_name_insert(self):
     _set_current_thread_ids_from(self)
     threading.Thread._bootstrap_inner_original(self)
 
-if sys.version_info[0] == 3:
+if six.PY3:
     threading.Thread._bootstrap_inner_original = threading.Thread._bootstrap_inner
     threading.Thread._bootstrap_inner = _thread_name_insert
 else:
@@ -65,7 +68,7 @@ else:
     threading.Thread._Thread__bootstrap = _thread_name_insert
 
 # set the ID's of the main thread
-threading.current_thread().setName('sideboard_main')
+threading.current_thread().name = 'sideboard_main'
 _set_current_thread_ids_from(threading.current_thread())
 
 
@@ -156,9 +159,9 @@ class TimeDelayQueue(Queue):
 
 
 class Caller(DaemonTask):
-    def __init__(self, func, interval=0, threads=1):
+    def __init__(self, func, interval=0, threads=1, name=None):
         self.q = TimeDelayQueue()
-        DaemonTask.__init__(self, self.call, interval=interval, threads=threads)
+        DaemonTask.__init__(self, self.call, interval=interval, threads=threads, name=name or func.__name__)
         self.callee = func
 
     def call(self):
@@ -184,8 +187,8 @@ class Caller(DaemonTask):
 
 
 class GenericCaller(DaemonTask):
-    def __init__(self, interval=0, threads=1):
-        DaemonTask.__init__(self, self.call, interval=interval, threads=threads)
+    def __init__(self, interval=0, threads=1, name=None):
+        DaemonTask.__init__(self, self.call, interval=interval, threads=threads, name=name)
         self.q = TimeDelayQueue()
 
     def call(self):
@@ -214,7 +217,7 @@ def _get_thread_current_stacktrace(thread_stack, thread):
     out = []
     linux_tid = getattr(thread, 'linux_tid', -1)
     status = '[unknown]'
-    if linux_tid != -1:
+    if psutil and linux_tid != -1:
         status = psutil.Process(linux_tid).status()
     out.append('\n--------------------------------------------------------------------------')
     out.append('# Thread name: "%s"\n# Python thread.ident: %d\n# Linux Thread PID (TID): %d\n# Run Status: %s'
@@ -239,6 +242,7 @@ def threading_information():
 def _to_megabytes(bytes):
     return str(int(bytes / 0x100000)) + 'MB'
 
+
 @register_diagnostics_status_function
 def general_system_info():
     """
@@ -252,6 +256,6 @@ def general_system_info():
     - # of cherrypy session locks (should be low)
     """
     out = []
-    out += ['Mem: ' + repr(psutil.virtual_memory())]
-    out += ['Swap: ' + repr(psutil.swap_memory())]
+    out += ['Mem: ' + repr(psutil.virtual_memory()) if psutil else '<unknown>']
+    out += ['Swap: ' + repr(psutil.swap_memory()) if psutil else '<unknown>']
     return '\n'.join(out)
