@@ -84,10 +84,11 @@ def install_pip_requirements_in_dir(dir_of_requirements_txt):
 
 
 def run_setup_py(path):
+    venv_python = str(__here__ / 'env' / 'bin' / 'python')
     sh('cd {path} && {python_path} {setup_path} develop'
         .format(
             path=path,
-            python_path=sys.executable,
+            python_path=venv_python if exists(venv_python) else sys.executable,
             setup_path=join(path, 'setup.py')))
 
 
