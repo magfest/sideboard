@@ -19,3 +19,6 @@ data/*.db
 .tox
 node_modules/
 .cache
+distribute-*.tar.gz
+distribute_setup.py
+.eggs/
