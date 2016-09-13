@@ -464,7 +464,10 @@ class WebSocketChecker(WebSocketTool):
 cherrypy.tools.websockets = WebSocketChecker()
 
 websocket_plugin = WebSocketPlugin(cherrypy.engine)
-WebSocketPlugin.start.__func__.priority = 66
+if hasattr(WebSocketPlugin.start, '__func__'):
+    WebSocketPlugin.start.__func__.priority = 66
+else:
+    WebSocketPlugin.start.priority = 66
 websocket_plugin.subscribe()
 
 local_broadcaster = Caller(local_broadcast)

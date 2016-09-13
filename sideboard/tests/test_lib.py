@@ -12,7 +12,7 @@ from mock import Mock
 
 from sideboard.lib._services import _Services
 from sideboard.websockets import local_broadcast, local_subscriptions, local_broadcaster
-from sideboard.lib import Model, serializer, ajax, is_listy, log, notify, locally_subscribes
+from sideboard.lib import Model, serializer, ajax, is_listy, log, notify, locally_subscribes, cached_property, request_cached_property, threadlocal
 
 
 class TestServices(TestCase):
@@ -441,3 +441,34 @@ class TestLocallySubscribes(object):
         monkeypatch.setattr(local_broadcaster, 'delayed', Mock())
         notify('foo')
         local_broadcaster.delayed.assert_called_with(0, ['foo'], trigger='manual', originating_client=None)
+
+
+def test_cached_property():
+    class Foo(object):
+        @cached_property
+        def bar(self):
+            return 5
+
+    foo = Foo()
+    assert not hasattr(foo, '_bar')
+    assert 5 == foo.bar
+    assert 5 == foo._bar
+    foo._bar = 6
+    assert 6 == foo.bar
+    assert 5 == Foo().bar  # per-instance caching
+
+
+def test_request_cached_property():
+    class Foo(object):
+        @request_cached_property
+        def bar(self):
+            return 5
+
+    name = __name__ + '.bar'
+    foo = Foo()
+    assert threadlocal.get(name) is None
+    assert 5 == foo.bar
+    assert 5 == threadlocal.get(name)
+    threadlocal.set(name, 6)
+    assert 6 == foo.bar
+    assert 6 == Foo().bar  # cache is shared between instances
