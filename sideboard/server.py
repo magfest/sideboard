@@ -207,4 +207,4 @@ orig_mount = cherrypy.tree.mount
 cherrypy.tree.mount = mount
 cherrypy.tree.mount(Root(), '', app_config)
 
-del sys.modules['six.moves.winreg']  # kludgy workaround for CherryPy's autoreloader erroring on winreg
+sys.modules.pop('six.moves.winreg', None)  # kludgy workaround for CherryPy's autoreloader erroring on winreg for versions which have this
