@@ -185,6 +185,24 @@ def db(request, init_db):
     return init_db
 
 
+class TestDeclarativeBaseConstructor(object):
+    def test_default_init(self):
+        assert User().id  # default is applied at initialization instead of on save
+
+    def test_overriden_init(self):
+        @declarative_base
+        class WithOverriddenInit(object):
+            id = Column(UUID(), primary_key=True, default=uuid.uuid4)
+
+            def __init__(self, **kwargs):
+                self.__dict__.update(kwargs)
+
+        class Foo(WithOverriddenInit):
+            bar = Column(Boolean())
+
+        assert Foo().id is None
+
+
 class TestCrudCount(object):
     def assert_counts(self, query, **expected):
         actual = {count['_label']: count['count'] for count in Session.crud.count(query)}
