@@ -315,6 +315,10 @@ class TestSerializer(TestCase):
     def test_datetime(self):
         dt = datetime(2001, 2, 3, 4, 5, 6)
         assert '"{}"'.format(dt.strftime(serializer._datetime_format)) == json.dumps(dt, cls=serializer)
+
+    def test_set(self):
+        st = set(['ya','ba','da','ba','da','ba','doo'])
+        assert '["ba", "da", "doo", "ya"]' == json.dumps(st, cls=serializer)
     
     def test_duplicate_registration(self):
         pytest.raises(Exception, serializer.register, datetime, lambda dt: None)

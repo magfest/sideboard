@@ -66,6 +66,7 @@ class serializer(json.JSONEncoder):
 
 serializer.register(date, lambda d: d.strftime('%Y-%m-%d'))
 serializer.register(datetime, lambda dt: dt.strftime(serializer._datetime_format))
+serializer.register(set, lambda s: sorted(list(s)))
 
 
 def cached_property(func):
