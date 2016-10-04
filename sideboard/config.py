@@ -22,7 +22,8 @@ def os_path_split_asunder(path, debug=False):
         newpath, tail = os.path.split(path)
         if newpath == path:
             assert not tail
-            if path: parts.append(path)
+            if path:
+                parts.append(path)
             break
         parts.append(tail)
         path = newpath
@@ -127,7 +128,7 @@ def parse_config(requesting_file_path, plugin=True):
         if 'rpc_services' in config:
             from sideboard.lib._services import _register_rpc_services
             _register_rpc_services(config['rpc_services'])
-        
+
         if 'default_url' in config:
             priority = config.get('default_url_priority', 0)
             if priority >= sideboard_config['default_url_priority']:

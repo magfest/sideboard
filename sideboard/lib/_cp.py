@@ -47,7 +47,7 @@ def on_startup(func=None, priority=50):
     3) This function can be used as a decorator with a priority value, e.g.
         @on_startup(priority=25)
         def callback_function():
-            ...        
+            ...
     """
     if func:
         return _on_startup(func, priority)
@@ -133,10 +133,11 @@ def restricted(x):
     """
     def make_decorator(ident):
         def decorator(func):
+            @cherrypy.expose
             @wraps(func)
             def with_checking(*args, **kwargs):
-                if not auth_cache[ident]['check']():
-                    raise HTTPRedirect(auth_cache[ident]['login_path'])
+                if not auth_registry[ident]['check']():
+                    raise cherrypy.HTTPRedirect(auth_registry[ident]['login_path'])
                 else:
                     return func(*args, **kwargs)
             return with_checking
@@ -224,6 +225,7 @@ def register_authenticator(ident, login_path, checker):
     - A function callable with no parameters which returns a truthy value if the
       user is logged in and a falsey value if they are not.
     """
+    assert ident not in auth_registry, '{} is already a registered authenticator'.format(ident)
     auth_registry[ident] = {
         'check': checker,
         'login_path': login_path

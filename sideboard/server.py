@@ -44,7 +44,7 @@ class Root(object):
                 raise cherrypy.HTTPRedirect(return_to or config['default_url'])
             else:
                 message = 'Invalid credentials'
-        
+
         return {
             'message': message,
             'username': username,

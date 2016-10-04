@@ -386,7 +386,7 @@ class Model(MutableMapping):
 
     @property
     def dirty(self):
-        return {k:v for k,v in self._data.items() if v != self._orig_data.get(k)}
+        return {k: v for k, v in self._data.items() if v != self._orig_data.get(k)}
 
     def to_dict(self):
         data = deepcopy(self._data)
@@ -465,10 +465,10 @@ class Subscription(object):
     ...     def __init__(self):
     ...         self.usernames = []
     ...         Subscription.__init__(self, 'admin.get_logged_in_users')
-    ...     
+    ...
     ...     def callback(self, users):
     ...         self.usernames = [user['username'] for user in users]
-    ... 
+    ...
     >>> users = UserList()
 
     The above code gives you a "users" object with a "usernames" attribute; when Sideboard
@@ -543,14 +543,14 @@ class MultiSubscription(object):
     ...     def __init__(self):
     ...         self.usernames = set()
     ...         MultiSubscription.__init__(self, ['host1', 'host2'], 'admin.get_logged_in_users')
-    ...     
+    ...
     ...     def callback(self, users, ws):
     ...         self.usernames.update(user['username'] for user in users)
-    ... 
+    ...
     >>> users = UserList()
 
     The above code gives you a "users" object with a "usernames" attribute; when Sideboard
-    starts, it opens websocket connections to 'host1' and 'host2', then subscribes to the 
+    starts, it opens websocket connections to 'host1' and 'host2', then subscribes to the
     "admin.get_logged_in_users" method and calls the "callback" method on every response.
     """
     def __init__(self, hostnames, rpc_method, *args, **kwargs):
