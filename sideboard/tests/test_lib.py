@@ -498,7 +498,10 @@ class TestPluggableAuth(object):
         cherrypy.session['uid'] = 123
 
     def test_double_registration(self):
-        pytest.raises(AssertionError, register_authenticator, 'test', 'already registered', lambda: 'this will not register due to an exception')
+        pytest.raises(Exception, register_authenticator, 'test', 'already registered', lambda: 'this will not register due to an exception')
+
+    def test_unknown_authenticator(self):
+        pytest.raises(Exception, all_restricted, 'unknown_authenticator')
 
     def test_all_restricted(self):
         self.called = False

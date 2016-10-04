@@ -1,4 +1,4 @@
-<!doctype html>
+{% raw %}<!doctype html>
 <html>
     <head><title>{{ plugin }} skeleton page</title></head>
     <body>
@@ -6,4 +6,4 @@
             <h1>Hello {{ plugin }} developer!</h1>
         {% endif %}
     </body>
-</html>
+</html>{% endraw%}
