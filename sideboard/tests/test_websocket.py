@@ -178,3 +178,24 @@ def test_make_subscription_unsubscribe(ws):
     threadlocal.reset(message={'client': 'xxx'}, websocket=Mock(spec=['NO_RESPONSE']))
     ws.make_caller('foo.bar').unsubscribe()
     ws.unsubscribe.assert_called_with('xxx')
+
+
+def test_preprocess_call(ws, returner):
+    ws.preprocess = lambda method, params: ['mock_modified_params']
+    assert 123 == ws.call('foo.bar')
+    ws._send.assert_called_with(method='foo.bar', params=['mock_modified_params'], callback='xxx')
+
+
+def test_preprocess_subscribe(ws):
+    ws.preprocess = lambda method, params: ['mock_modified_params']
+    callback = Mock()
+    assert 'xxx' == ws.subscribe(callback, 'foo.bar')
+    registered = ws._callbacks['xxx'].copy()
+    del registered['errback']
+    assert registered == {
+        'client': 'xxx',
+        'callback': callback,
+        'method': 'foo.bar',
+        'params': ['mock_modified_params']
+    }
+    ws._send.assert_called_with(method='foo.bar', params=['mock_modified_params'], client='xxx')
