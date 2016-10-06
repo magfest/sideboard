@@ -234,7 +234,9 @@ def log_exceptions(fn):
 
 TRACE_LEVEL = 5
 logging.addLevelName(TRACE_LEVEL, "TRACE")
+
+
 def trace(self, message, *args, **kws):
     # Yes, logger takes its '*args' as 'args'.
-    self._log(TRACE_LEVEL, message, args, **kws) 
+    self._log(TRACE_LEVEL, message, args, **kws)
 logging.Logger.trace = trace

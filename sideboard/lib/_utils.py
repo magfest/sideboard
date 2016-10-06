@@ -28,10 +28,10 @@ class serializer(json.JSONEncoder):
     Plugins should not need to instantiate this class directly, but
     they are expected to call serializer.register() for new data types.
     """
-    
+
     _registry = {}
     _datetime_format = '%Y-%m-%d %H:%M:%S.%f'
-    
+
     def default(self, o):
         if type(o) in self._registry:
             preprocessor = self._registry[type(o)]
@@ -41,21 +41,21 @@ class serializer(json.JSONEncoder):
                     break
             else:
                 raise json.JSONEncoder.default(self, o)
-        
+
         return preprocessor(o)
-    
+
     @classmethod
     def register(cls, type, preprocessor):
         """
         Associates a type with a preprocessor so that RPC handlers may
         pass non-builtin JSON types.  For example, Sideboard already
         does the equivalent of
-        
+
         >>> serializer.register(datetime, lambda dt: dt.strftime('%Y-%m-%d %H:%M:%S.%f'))
-        
+
         This method raises an exception if you try to register a
         preprocessor for a type which already has one.
-        
+
         :param type: the type you are registering
         :param preprocessor: function which takes one argument which is
                              the value to serialize and returns a json-
@@ -72,6 +72,7 @@ serializer.register(set, lambda s: sorted(list(s)))
 def cached_property(func):
     """decorator for making readonly, memoized properties"""
     pname = "_" + func.__name__
+
     @property
     @wraps(func)
     def caching(self, *args, **kwargs):
@@ -91,6 +92,7 @@ def request_cached_property(func):
     """
     from sideboard.lib import threadlocal
     name = func.__module__ + '.' + func.__name__
+
     @property
     @wraps(func)
     def with_caching(self):
@@ -124,19 +126,19 @@ def entry_point(func):
     used to call into any plugin-defined entry point after deleting sys.argv[0]
     so that the entry point name will be the first argument.  For example, if a
     plugin had this entry point:
-    
+
         @entry_point
         def some_action():
             print(sys.argv)
-    
+
     Then someone in a shell ran the command:
-    
+
         sep some_action foo bar
-    
+
     It would print:
-    
+
         ['some_action', 'foo', 'bar']
-    
+
     :param func: a function which takes no arguments; its name will be the name
                  of the command, and an exception is raised if a function with
                  the same name has already been registered as an entry point
@@ -146,4 +148,3 @@ def entry_point(func):
     return func
 
 _entry_points = {}
-

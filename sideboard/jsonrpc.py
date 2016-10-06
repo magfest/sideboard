@@ -34,8 +34,8 @@ def force_json_in():
         except ValueError:
             raise cherrypy.HTTPError(400, 'Invalid JSON document')
 
-
 cherrypy.tools.force_json_in = cherrypy.Tool('before_request_body', force_json_in, priority=30)
+
 
 def _make_jsonrpc_handler(services, debug=config['debug'],
                          precall=lambda body: None,

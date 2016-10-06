@@ -33,26 +33,26 @@ class _Services(object):
     """
     This class is used by plugins to register services, and to call services
     registered by other plugins.  You call services by attribute lookup, e.g.
-    
+
     >>> from sideboard.lib import services
     >>> services.foo.bar()
     'Hello World!'
-    
+
     You may get a service which has not yet been registered; you'll only get
     an exception when calling a method on the service if it doesn't exist yet;
     this is to facilitate getting a namespace before the relevant plugin has
     been imported by Sideboard:
-    
+
     >>> foo, baz = services.foo, services.baz
     >>> foo.bar()
     'Hello World!'
     >>> baz.baf()
     AssertionError: baz is not registered as a service
-    
+
     Services may be local or websocket, but they're called in the same way.
     If you know that service is remote, and you want to use Jsonrpc, you can
     use the .jsonrpc attribute of this class, e.g.
-    
+
     >>> services.jsonrpc.foo.bar()
     'Hello World!'
     >>> foo = services.jsonrpc.foo

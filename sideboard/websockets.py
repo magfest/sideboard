@@ -319,11 +319,12 @@ class WebSocketDispatcher(WebSocket):
 
     def client_lock(self, client):
         ordered_clients = sorted(sideboard.lib.listify(client or []))
+
         class MultiLock(object):
             def __enter__(inner_self):
                 for client in ordered_clients:
                     self.client_locks[client].acquire()
-            
+
             def __exit__(inner_self, *args, **kwargs):
                 for client in reversed(ordered_clients):
                     self.client_locks[client].release()

@@ -48,12 +48,12 @@ def _check(url, **ssl_params):
 
         try:
             with closing(socket.create_connection((host, port))) as sock:
-                wrapped = ssl.wrap_socket(sock, cert_reqs=ssl.CERT_REQUIRED, **ssl_params)
+                wrapped = ssl.wrap_socket(sock, **dict(ssl_params, cert_reqs=ssl.CERT_REQUIRED))
+                status.append('succeeded at validating server cert')
         except Exception as e:
             return status + ['failed to validate server cert ({}): {!s}'.format(ssl_params, e)]
 
     status.append('everything seems to work')
-
     return status
 
 
@@ -62,7 +62,7 @@ def check_all():
     for name, jservice in services._jsonrpc.items():
         jproxy = jservice._send.im_self  # ugly kludge to get the ServerProxy object
         url = '{}://{}/'.format(jproxy.type, jproxy.host)
-        checks[name] = _check(url, ca_certs=jproxy.ca_certs, keyfile=jproxy.key_file, certfile=jproxy.cert_file)
+        checks[name] = _check(url, **jproxy.ssl_opts)
     return checks
 
 

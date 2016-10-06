@@ -12,7 +12,7 @@ from mock import Mock
 
 from sideboard.lib._services import _Services
 from sideboard.websockets import local_broadcast, local_subscriptions, local_broadcaster
-from sideboard.lib import Model, serializer, ajax, is_listy, log, notify, locally_subscribes, cached_property, request_cached_property, threadlocal
+from sideboard.lib import Model, serializer, ajax, is_listy, log, notify, locally_subscribes, cached_property, request_cached_property, threadlocal, register_authenticator, restricted, all_restricted
 
 
 class TestServices(TestCase):
@@ -55,11 +55,11 @@ class TestModel(TestCase):
         self.assertEqual(5, model['foo'])
         self.assertEqual({'baz': 'baf'}, model.bar)
         self.assertEqual({'baz': 'baf'}, model['bar'])
-    
+
     def test_missing_key(self):
         model = Model({}, 'test')
         self.assertIs(None, model.does_not_exist)
-    
+
     def test_id_unsettable(self):
         model = Model({'id': 'some_uuid'}, 'test')
         model.id = 'some_uuid'
@@ -69,7 +69,7 @@ class TestModel(TestCase):
             model.id = 'another_uuid'
         with self.assertRaises(Exception):
             model['id'] = 'another_uuid'
-    
+
     def test_extra_data_only(self):
         d = {
             'id': 'some_uuid',
@@ -182,7 +182,7 @@ class TestModel(TestCase):
         self.assertEqual('bar', model.foo)
         self.assertNotIn('foo', model._data)
         self.assertEqual('bar', model._data['extra_data']['foo'])
-    
+
     def test_defaults(self):
         data = {
             'extra_data': {
@@ -194,7 +194,7 @@ class TestModel(TestCase):
             },
             'baf': -4
         }
-        model = Model(data, 'test', {'bar','baf','fizz'}, {
+        model = Model(data, 'test', {'bar', 'baf', 'fizz'}, {
             'foo': 1,
             'bar': 2,
             'baz': 3,
@@ -215,7 +215,7 @@ class TestModel(TestCase):
         self.assertEqual(model.baf, 14)
         self.assertEqual(model.fizz, 5)
         self.assertEqual(model.buzz, 6)
-    
+
     def test_to_dict(self):
         data = {
             'id': 'some_uuid',
@@ -237,7 +237,7 @@ class TestModel(TestCase):
         self.assertEqual(model.to_dict(), serialized)
         serialized.pop('extra_data')
         self.assertEqual(dict(model), serialized)
-    
+
     def test_query(self):
         model = Model({'_model': 'Test', 'id': 'some_uuid'}, 'test')
         self.assertEqual(model.query, {
@@ -248,7 +248,7 @@ class TestModel(TestCase):
         for data in [{}, {'_model': 'Test'}, {'id': 'some_uuid'}]:
             with self.assertRaises(Exception):
                 Model(data, 'test').query
-    
+
     def test_dirty(self):
         data = {
             'id': 'some_uuid',
@@ -261,23 +261,23 @@ class TestModel(TestCase):
             }
         }
         self.assertEqual(Model(data, 'test').dirty, {})
-        
+
         model = Model(data, 'test')
         model.spam = 'nee'
         self.assertEqual(model.dirty, {'spam': 'nee'})
-        
+
         model = Model(data, 'test')
         model.foo = 6
         self.assertEqual(model.dirty, {'extra_data': {}, 'test_data': {'foo': 6, 'bar': {'baz': 'baf'}}})
-        
+
         model = Model(data, 'test')
         model.bar = {'fizz': 'buzz'}
         self.assertEqual(model.dirty, {'test_data': {'bar': {'fizz': 'buzz'}}})
-        
+
         model = Model(data, 'test')
         model.bar['baz'] = 'zab'
         self.assertEqual(model.dirty, {'test_data': {'bar': {'baz': 'zab'}}})
-        
+
         model = Model(data, 'test')
         model.foo = 6
         model.bar = 'baz'
@@ -292,7 +292,7 @@ class TestModel(TestCase):
             },
             'extra_data': {}
         })
-        
+
         model = Model({}, 'test')
         model.foo = 'bar'
         self.assertEqual(model.dirty, {'extra_data': {'test_foo': 'bar'}})
@@ -302,32 +302,33 @@ class TestSerializer(TestCase):
     class Foo(object):
         def __init__(self, x):
             self.x = x
-    
-    class Bar(Foo): pass
-    
+
+    class Bar(Foo):
+        pass
+
     def setUp(self):
         self.addCleanup(setattr, serializer, '_registry', serializer._registry.copy())
 
     def test_date(self):
         d = date(2001, 2, 3)
         assert '"2001-02-03"' == json.dumps(d, cls=serializer)
-    
+
     def test_datetime(self):
         dt = datetime(2001, 2, 3, 4, 5, 6)
         assert '"{}"'.format(dt.strftime(serializer._datetime_format)) == json.dumps(dt, cls=serializer)
 
     def test_set(self):
-        st = set(['ya','ba','da','ba','da','ba','doo'])
+        st = set(['ya', 'ba', 'da', 'ba', 'da', 'ba', 'doo'])
         assert '["ba", "da", "doo", "ya"]' == json.dumps(st, cls=serializer)
-    
+
     def test_duplicate_registration(self):
         pytest.raises(Exception, serializer.register, datetime, lambda dt: None)
-    
+
     def test_new_type(self):
         serializer.register(self.Foo, lambda foo: foo.x)
         assert '5' == json.dumps(self.Foo(5), cls=serializer)
         assert '6' == json.dumps(self.Foo(6), cls=serializer)
-    
+
     def test_new_type_subclass(self):
         serializer.register(self.Foo, lambda foo: 'Hello World!')
         serializer.register(self.Bar, lambda bar: 'Hello Kitty!')
@@ -336,17 +337,17 @@ class TestSerializer(TestCase):
 
     """
     Here are some cases which are currently undefined (and I'm okay with it):
-    
+
     class Foo(object): pass
     class Bar(object): pass
     class Baz(Foo, Bar): pass
     class Baf(Foo): pass
     class Bax(Foo): pass
-    
+
     serializer.register(Foo, foo_preprocessor)
     serializer.register(Bar, bar_preprocessor)
     serializer.register(Baf, baf_preprocessor)
-    
+
     json.dumps(Baz(), cls=serializer)   # undefined which function will be used
     json.dumps(Bax(), cls=serializer)   # undefined which function will be used
     """
@@ -381,26 +382,31 @@ class TestIsListy(TestCase):
 
         class AlwaysEmptySequence(Sequence):
             def __len__(self): return 0
+
             def __getitem__(self, i): return [][i]
 
         assert is_listy(AlwaysEmptySequence())
 
         class AlwaysEmptySet(Set):
             def __len__(self): return 0
+
             def __iter__(self): return iter([])
+
             def __contains__(self, x): return False
 
         assert is_listy(AlwaysEmptySet())
 
     def test_miscellaneous(self):
-        class Foo(object): pass
-        
+        class Foo(object):
+            pass
+
         for x in [0, 1, False, True, Foo, object, object()]:
             assert not is_listy(x)
 
 
 def test_double_mount(request):
-    class Root(object): pass
+    class Root(object):
+        pass
     request.addfinalizer(lambda: cherrypy.tree.apps.pop('/test', None))
     cherrypy.tree.mount(Root(), '/test')
     pytest.raises(Exception, cherrypy.tree.mount, Root(), '/test')
@@ -422,6 +428,7 @@ class TestLocallySubscribes(object):
     @pytest.yield_fixture(autouse=True)
     def counter(self):
         _counter = count()
+
         @locally_subscribes('foo', 'bar')
         def counter():
             return next(_counter)
@@ -476,3 +483,54 @@ def test_request_cached_property():
     threadlocal.set(name, 6)
     assert 6 == foo.bar
     assert 6 == Foo().bar  # cache is shared between instances
+
+
+class TestPluggableAuth(object):
+    @pytest.fixture(scope='session', autouse=True)
+    def mock_authenticator(self):
+        register_authenticator('test', '/mock_login_page', lambda: 'uid' in cherrypy.session)
+
+    @pytest.fixture(autouse=True)
+    def mock_session(self, monkeypatch):
+        monkeypatch.setattr(cherrypy, 'session', {}, raising=False)
+
+    def mock_login(self):
+        cherrypy.session['uid'] = 123
+
+    def test_double_registration(self):
+        pytest.raises(Exception, register_authenticator, 'test', 'already registered', lambda: 'this will not register due to an exception')
+
+    def test_unknown_authenticator(self):
+        pytest.raises(Exception, all_restricted, 'unknown_authenticator')
+
+    def test_all_restricted(self):
+        self.called = False
+
+        @all_restricted('test')
+        class AllRestricted(object):
+            def index(inner_self):
+                self.called = True
+
+        with pytest.raises(cherrypy.HTTPRedirect) as exc:
+            AllRestricted().index()
+        assert not self.called and exc.value.args[0][0].endswith('/mock_login_page')
+
+        self.mock_login()
+        AllRestricted().index()
+        assert self.called
+
+    def test_restricted(self):
+        self.called = False
+
+        class SingleRestricted(object):
+            @restricted('test')
+            def index(inner_self):
+                self.called = True
+
+        with pytest.raises(cherrypy.HTTPRedirect) as exc:
+            SingleRestricted().index()
+        assert not self.called and exc.value.args[0][0].endswith('/mock_login_page')
+
+        self.mock_login()
+        SingleRestricted().index()
+        assert self.called

@@ -104,7 +104,7 @@ class DaemonTask(object):
                 self.stopped.clear()
                 del self.threads[:]
                 for i in range(self.thread_count):
-                    t = Thread(target = self.run)
+                    t = Thread(target=self.run)
                     t.name = '{}-{}'.format(self.name, i + 1)
                     t.daemon = True
                     t.start()
@@ -166,7 +166,7 @@ class Caller(DaemonTask):
 
     def call(self):
         try:
-            args, kwargs = self.q.get(timeout = config['thread_wait_interval'])
+            args, kwargs = self.q.get(timeout=config['thread_wait_interval'])
             self.callee(*args, **kwargs)
         except Empty:
             pass
@@ -193,7 +193,7 @@ class GenericCaller(DaemonTask):
 
     def call(self):
         try:
-            func, args, kwargs = self.q.get(timeout = config['thread_wait_interval'])
+            func, args, kwargs = self.q.get(timeout=config['thread_wait_interval'])
             func(*args, **kwargs)
         except Empty:
             pass
@@ -221,7 +221,7 @@ def _get_thread_current_stacktrace(thread_stack, thread):
         status = psutil.Process(linux_tid).status()
     out.append('\n--------------------------------------------------------------------------')
     out.append('# Thread name: "%s"\n# Python thread.ident: %d\n# Linux Thread PID (TID): %d\n# Run Status: %s'
-                % (thread.name, thread.ident, linux_tid, status) )
+                % (thread.name, thread.ident, linux_tid, status))
     for filename, lineno, name, line in traceback.extract_stack(thread_stack):
         out.append('File: "%s", line %d, in %s' % (filename, lineno, name))
         if line:
