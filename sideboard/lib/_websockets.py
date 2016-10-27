@@ -112,6 +112,17 @@ class WebSocket(object):
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
 
+    def preprocess(self, method, params):
+        """
+        Each message we send has its parameters passed to this function and
+        the actual parameters sent are whatever this function returns.  By
+        default this just returns the message unmodified, but plugins can
+        override this to add whatever logic is needed.  We pass the method
+        name in its full "service.method" form in case the logic depends on
+        the service being invoked.
+        """
+        return params
+
     @property
     def _should_reconnect(self):
         interval = min(config['ws.reconnect_interval'], 2 ** self._reconnect_attempts)
@@ -285,7 +296,7 @@ class WebSocket(object):
             }
 
         paramback = self._callbacks[client].get('paramback')
-        params = paramback() if paramback else (args or kwargs)
+        params = self.preprocess(method, paramback() if paramback else (args or kwargs))
         self._callbacks[client].setdefault('errback', lambda result: log.error('{}(*{}, **{}) returned an error: {!r}', method, args, kwargs, result))
         self._callbacks[client].update({
             'method': method,
@@ -327,8 +338,9 @@ class WebSocket(object):
             'callback': result.append,
             'errback': error.append
         }
+        params = self.preprocess(method, args or kwargs)
         try:
-            self._send(method=method, params=args or kwargs, callback=callback)
+            self._send(method=method, params=params, callback=callback)
         except:
             self._callbacks.pop(callback, None)
             raise
