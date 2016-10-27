@@ -13,39 +13,15 @@ class ConfigurationError(RuntimeError):
     pass
 
 
-def os_path_split_asunder(path, debug=False):
-    """
-    http://stackoverflow.com/a/4580931/171094
-    """
-    parts = []
-    while True:
-        newpath, tail = os.path.split(path)
-        if newpath == path:
-            assert not tail
-            if path:
-                parts.append(path)
-            break
-        parts.append(tail)
-        path = newpath
-    parts.reverse()
-    return parts
-
-
 def get_dirnames(pyname):
     """
     Returns the "root" and "module_root" directory names for the given Python
-    module, which will be added to the config object.  These values will be
-    different in development than in production, so we determine whether or not
-    this is a production deploy by checking for the existence of /etc/sideboard.
-    Note that this will fail if we ever create /etc/sideboard on a development
-    machine, e.g. if we ever installed the Sideboard RPM on a vagrant box.
+    module, which will be added to the config object.  Originally these could
+    be in wildly different places on the filesystem, but we've standardized
+    on requiring the root directory the be one level above the module_root.
     """
     module_dir = os.path.dirname(os.path.abspath(pyname))
-    expected_prod_plugin_dir = ('/', 'opt', 'sideboard', 'plugins')
-    if os.path.exists('/etc/sideboard'):
-        return module_dir, os.path.join(*os_path_split_asunder(pyname)[:len(expected_prod_plugin_dir) + 1])
-    else:
-        return module_dir, os.path.realpath(os.path.join(module_dir, '..'))
+    return module_dir, os.path.realpath(os.path.join(module_dir, '..'))
 
 
 def get_config_files(requesting_file_path, plugin):
@@ -64,7 +40,9 @@ def get_config_files(requesting_file_path, plugin):
     module_name = os.path.basename(module_dir)
     default_file_paths = ('development-defaults.ini', 'development.ini')
 
-    if plugin:
+    if 'SIDEBOARD_MODULE_TESTING' in os.environ:
+        extra_configs = []
+    elif plugin:
         extra_configs = ['/etc/sideboard/plugins.d/{}.cfg'.format(module_name.replace('_', '-'))]
     else:
         assert module_name == 'sideboard', 'Unexpected module name {!r} requesting "non-plugin" configuration files'.format(module_name)
