@@ -24,15 +24,26 @@ def get_dirnames(pyname):
 
 def get_config_files(requesting_file_path, plugin):
     """
-    get a list of the config files that should be parsed, merged and returned by parse_config
+    Returns a list of absolute paths to config files to be parsed by ConfigObj,
+    which allows subsequent files to override values in earlier files.  We parse
+    the following in this order:
+    -> development-defaults.ini, which can be checked into source control and
+        include whatever we want to be present in a development environment
+    -> development.ini, which shouldn't be checked into source control, allowing
+        a developer to include local settings not shared with others
+    -> /etc/sideboard/plugins.d/<PLUGIN_NAME>.cfg, which is the config file we
+        expect in production; the others shouldn't exist on a real install
 
-    :param requesting_file_path: the path of the file requesting a parsed config file
-    :param plugin: if True (default) return the expected production-config directory. This is based
-        on the folder name of the requesting module, although in the future this could be the
-        based on the plugin name, no matter where you request a config from.
-    :return: list of config file paths that should be parsed, this list is ordered from lowest
-        to highest priority
-    :type: list
+    When developing on a machine with an installed production config file, we
+    might want to ignore the "real" config file and limit ourselves to only the
+    development files.  This behavior is turned on by setting the environment
+    variable SIDEBOARD_MODULE_TESTING to any value.
+
+    This function takes the following parameters:
+    requesting_file_path: the Python __file__ of the module which is parsing its
+                          config; used to locate development config files
+    plugin: boolean indicating whether config is being parsed for a plugin or
+            for Sideboard itself, since this affects which filenames we return
     """
     module_dir, root_dir = get_dirnames(requesting_file_path)
     module_name = os.path.basename(module_dir)
