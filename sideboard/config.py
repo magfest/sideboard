@@ -15,10 +15,8 @@ class ConfigurationError(RuntimeError):
 
 def get_dirnames(pyname):
     """
-    Returns the "root" and "module_root" directory names for the given Python
-    module, which will be added to the config object.  Originally these could
-    be in wildly different places on the filesystem, but we've standardized
-    on requiring the root directory the be one level above the module_root.
+    Returns a tuple of the "module_root", which is the directory containing the
+    given filename, and the "root", which is the parent directory one level up.
     """
     module_dir = os.path.dirname(os.path.abspath(pyname))
     return module_dir, os.path.realpath(os.path.join(module_dir, '..'))
