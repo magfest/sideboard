@@ -4,7 +4,7 @@ import sys
 import json
 from copy import deepcopy
 from itertools import count
-from threading import RLock
+from threading import RLock, Event
 from datetime import datetime, timedelta
 from collections import Mapping, MutableMapping
 
@@ -332,11 +332,12 @@ class WebSocket(object):
         kind was received.  The positional and keyword arguments to this method
         are used as the arguments to the rpc function call.
         """
+        finished = Event()
         result, error = [], []
         callback = self._next_id('callback')
         self._callbacks[callback] = {
-            'callback': result.append,
-            'errback': error.append
+            'callback': lambda response: (result.append(response), finished.set()),
+            'errback': lambda response: (error.append(response), finished.set())
         }
         params = self.preprocess(method, args or kwargs)
         try:
@@ -345,8 +346,9 @@ class WebSocket(object):
             self._callbacks.pop(callback, None)
             raise
 
-        for i in range(10 * config['ws.call_timeout']):
-            stopped.wait(0.1)
+        wait_until = datetime.now() + timedelta(seconds=config['ws.call_timeout'])
+        while datetime.now() < wait_until:
+            finished.wait(0.1)
             if stopped.is_set() or result or error:
                 break
         self._callbacks.pop(callback, None)
