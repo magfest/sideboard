@@ -120,19 +120,17 @@ def test_call_error(errorer):
 
 
 def test_call_timeout(ws, config_patcher, monkeypatch):
-    monkeypatch.setattr(stopped, 'wait', Mock())
+    monkeypatch.setattr(stopped, 'is_set', Mock(return_value=False))
     config_patcher(1, 'ws.call_timeout')
     pytest.raises(Exception, ws.call, 'foo.bar')
     assert 'xxx' not in ws._callbacks
-    assert stopped.wait.call_count == 10
+    assert 9 <= stopped.is_set.call_count <= 11
 
 
 def test_call_stopped_set(ws, request, monkeypatch):
-    monkeypatch.setattr(stopped, 'wait', Mock())
     request.addfinalizer(stopped.clear)
     stopped.set()
     pytest.raises(Exception, ws.call, 'foo.bar')
-    assert stopped.wait.call_count == 1
 
 
 @pytest.fixture
