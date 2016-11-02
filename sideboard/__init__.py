@@ -6,11 +6,7 @@ import six
 import cherrypy
 
 from sideboard._version import __version__
-try:
-    import sideboard.server
-except:
-    from sideboard.lib import log
-    log.warning('Error importing server', exc_info=True)
+import sideboard.server
 
 from sideboard.internal.imports import _discover_plugins
 from sideboard.internal.logging import _configure_logging
