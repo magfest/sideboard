@@ -13,13 +13,34 @@ class ConfigurationError(RuntimeError):
     pass
 
 
-def get_dirnames(pyname):
+def get_dirnames(pyname, plugin):
     """
-    Returns a tuple of the "module_root", which is the directory containing the
-    given filename, and the "root", which is the parent directory one level up.
+    Sideboard and its plugins often want to find other files.  Sometimes they
+    need files which ship as part of the module itself, and for those they need
+    to know the module directory.  Other times they might need files which are
+    bundled with their Git repo or which shipped with their RPM, and for those
+    they need to know their "root" directory.  This "root" directory in
+    development is just the root of the Git repo and in production is the
+    package under the configured "plugins_dir" directory.
+
+    These two directories are also automatically inserted into plugin config
+    files as "root" and "module_root" and are available for interpolation.  For
+    example, a plugin could have a line in their config file like
+        template_dir = "%(module_root)s/templates"
+    and that would be interpolated to the correct absolute path.
+
+    This function takes two parameters:
+    pyname: the __file__ of the module needing to know these directories
+    plugin: boolean indicating whether this is a plugin or Sideboard itself
     """
     module_dir = os.path.dirname(os.path.abspath(pyname))
-    return module_dir, os.path.realpath(os.path.join(module_dir, '..'))
+    if plugin:
+        from sideboard.lib import config
+        plugin_name = os.path.basename(module_dir)
+        root_dir = os.path.join(config['plugins_dir'], plugin_name.replace('_', '-'))
+    else:
+        root_dir = os.path.realpath(os.path.join(module_dir, '..'))
+    return module_dir, root_dir
 
 
 def get_config_files(requesting_file_path, plugin):
@@ -48,7 +69,7 @@ def get_config_files(requesting_file_path, plugin):
     plugin: boolean indicating whether config is being parsed for a plugin or
             for Sideboard itself, since this affects which filenames we return
     """
-    module_dir, root_dir = get_dirnames(requesting_file_path)
+    module_dir, root_dir = get_dirnames(requesting_file_path, plugin)
     module_name = os.path.basename(module_dir)
     default_file_paths = ('development-defaults.ini', 'development.ini')
 
@@ -84,7 +105,7 @@ def parse_config(requesting_file_path, plugin=True):
     :return: the resulting configuration object
     :rtype: ConfigObj
     """
-    module_dir, root_dir = get_dirnames(requesting_file_path)
+    module_dir, root_dir = get_dirnames(requesting_file_path, plugin)
 
     specfile = os.path.join(module_dir, 'configspec.ini')
     spec = configobj.ConfigObj(specfile, interpolation=False, list_values=False, encoding='utf-8', _inspec=True)
