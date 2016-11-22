@@ -1,9 +1,11 @@
 from __future__ import unicode_literals
 import json
+from time import sleep
 from itertools import count
 from unittest import TestCase
 from datetime import datetime, date
 from collections import Sequence, Set
+from threading import current_thread, Thread
 
 import six
 import pytest
@@ -12,7 +14,7 @@ from mock import Mock
 
 from sideboard.lib._services import _Services
 from sideboard.websockets import local_broadcast, local_subscriptions, local_broadcaster
-from sideboard.lib import Model, serializer, ajax, is_listy, log, notify, locally_subscribes, cached_property, request_cached_property, threadlocal
+from sideboard.lib import Model, serializer, ajax, is_listy, log, notify, locally_subscribes, cached_property, request_cached_property, threadlocal, RWGuard
 
 
 class TestServices(TestCase):
@@ -472,3 +474,104 @@ def test_request_cached_property():
     threadlocal.set(name, 6)
     assert 6 == foo.bar
     assert 6 == Foo().bar  # cache is shared between instances
+
+
+class TestRWGuard(object):
+    @pytest.fixture
+    def guard(self, monkeypatch):
+        guard = RWGuard()
+        monkeypatch.setattr(guard.ready_for_writes, 'notify', Mock())
+        monkeypatch.setattr(guard.ready_for_reads, 'notify_all', Mock())
+        return guard
+
+    def test_read_locked_tracking(self, guard):
+        assert {} == guard.acquired_readers
+        with guard.read_locked:
+            assert {current_thread().ident: 1} == guard.acquired_readers
+            with guard.read_locked:
+                assert {current_thread().ident: 2} == guard.acquired_readers
+            assert {current_thread().ident: 1} == guard.acquired_readers
+        assert {} == guard.acquired_readers
+
+    def test_write_locked_tracking(self, guard):
+        assert {} == guard.acquired_writer
+        with guard.write_locked:
+            assert {current_thread().ident: 1} == guard.acquired_writer
+            with guard.write_locked:
+                assert {current_thread().ident: 2} == guard.acquired_writer
+            assert {current_thread().ident: 1} == guard.acquired_writer
+        assert {} == guard.acquired_writer
+
+    def test_multi_read_locking_allowed(self, guard):
+        guard.acquired_readers['mock-thread-ident'] = 1
+        with guard.read_locked:
+            pass
+
+    def test_read_write_exclusion(self, guard):
+        with guard.read_locked:
+            with pytest.raises(AssertionError):
+                with guard.write_locked:
+                    pass
+
+    def test_write_read_exclusion(self, guard):
+        with guard.write_locked:
+            with pytest.raises(Exception):
+                with guard.read_locked:
+                    pass
+
+    def test_release_requires_acquisition(self, guard):
+        pytest.raises(AssertionError, guard.release)
+
+    def test_wake_readers(self, guard):
+        with guard.read_locked:
+            guard.waiting_writer_count = 1
+        assert not guard.ready_for_reads.notify_all.called
+
+        guard.waiting_writer_count = 0
+        with guard.read_locked:
+            pass
+        assert guard.ready_for_reads.notify_all.called
+
+    def test_wake_writers(self, guard):
+        with guard.write_locked:
+            guard.acquired_readers['mock-tid'] = 1
+            guard.waiting_writer_count = 1
+        assert not guard.ready_for_writes.notify.called
+
+        guard.acquired_readers.clear()
+        with guard.write_locked:
+            guard.waiting_writer_count = 0
+        assert not guard.ready_for_writes.notify.called
+
+        with guard.write_locked:
+            guard.waiting_writer_count = 1
+        assert guard.ready_for_writes.notify.called
+
+    def test_threading(self):
+        guard = RWGuard()
+        read, written = [False], [False]
+
+        def reader():
+            with guard.read_locked:
+                read[0] = True
+
+        def writer():
+            with guard.write_locked:
+                written[0] = True
+
+        with guard.write_locked:
+            Thread(target=reader).start()
+            Thread(target=writer).start()
+            sleep(0.1)
+            assert not read[0] and not written[0]
+        sleep(0.1)
+        assert read[0] and written[0]
+
+        read, written = [False], [False]
+        with guard.read_locked:
+            Thread(target=reader).start()
+            Thread(target=writer).start()
+            sleep(0.1)
+            assert read[0] and not written[0]
+        sleep(0.1)
+        assert read[0] and written[0]
