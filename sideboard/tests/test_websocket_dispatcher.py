@@ -1,4 +1,5 @@
 from __future__ import unicode_literals
+from threading import RLock
 from collections import namedtuple
 
 import pytest
@@ -141,41 +142,46 @@ def test_unsubscribe_from_nonexistent(wsd):
 
 def test_unsubscribe(wsd):
     client = 'client-1'
-    wsd.client_locks[client] = 'lock'
+    wsd.client_locks[client] = RLock()
     wsd.cached_queries[client] = {None: (Mock(), (), {}, {})}
     wsd.cached_fingerprints[client] = 'fingerprint'
     WebSocketDispatcher.subscriptions['foo'] = {wsd: {client: 'subscription'}}
-    wsd.unsubscribe(client)
+    wsd.handle_message({'action': 'unsubscribe', 'client': client})
     for d in [wsd.client_locks, wsd.cached_queries, wsd.cached_fingerprints, WebSocketDispatcher.subscriptions['foo']]:
         assert client not in d
 
 
 def test_multi_unsubscribe(wsd):
     client = ['client-1', 'client-2']
-    wsd.client_locks = {'client-1': 'lock', 'client-2': 'lock'}
+    wsd.client_locks = {'client-1': RLock(), 'client-2': RLock()}
     wsd.cached_fingerprints = {'client-1': 'fingerprint', 'client-2': 'fingerprint'}
     wsd.cached_queries = {'client-1': {None: (Mock(), (), {}, {})}, 'client-2': {None: (Mock(), (), {}, {})}}
     WebSocketDispatcher.subscriptions['foo'] = {wsd: {'client-1': 'subscription', 'client-2': 'subscription'}}
-    wsd.unsubscribe(client)
+    wsd.handle_message({'action': 'unsubscribe', 'client': client})
     for d in [wsd.client_locks, wsd.cached_queries, wsd.cached_fingerprints, WebSocketDispatcher.subscriptions['foo']]:
         assert 'client-1' not in d
         assert 'client-2' not in d
 
 
-def test_unsubscribe_all(wsd):
+def test_unsubscribe_all(wsd, subscriptions):
     assert wsd in WebSocketDispatcher.subscriptions['foo']
     assert wsd in WebSocketDispatcher.subscriptions['bar']
+    sub = wsd.passthru_subscriptions['client-0'] = Mock()
+
     wsd.unsubscribe_all()
+
     assert wsd not in WebSocketDispatcher.subscriptions['foo']
     assert wsd not in WebSocketDispatcher.subscriptions['bar']
+    assert 'client-0' not in wsd.passthru_subscriptions and sub.unsubscribe.called
 
 
 def test_remote_unsubscribe(wsd, ws):
     ws.unsubscribe = Mock()
-    threadlocal.reset(websocket=ws, message={'client': 'xxx'})
+    ws._next_id = Mock(return_value='yyy')
+    threadlocal.reset(websocket=wsd, message={'client': 'xxx'})
     wsd.cached_queries['xxx'] = {None: (ws.make_caller('remote.foo'), (), {}, {})}
     wsd.unsubscribe('xxx')
-    ws.unsubscribe.assert_called_with('xxx')
+    ws.unsubscribe.assert_called_with('yyy')
 
 
 def test_update_subscriptions_with_new_callback(wsd):

@@ -59,25 +59,28 @@ class _WebSocketClientDispatcher(WebSocketClient):
 
 
 class _Subscriber(object):
-    def __init__(self, method, client, src_ws, dest_ws):
-        self.src_ws, self.dest_ws, self.method, self.client = src_ws, dest_ws, method, client
+    def __init__(self, method, src_client, dst_client, src_ws, dest_ws):
+        self.method, self.src_ws, self.dest_ws, self.src_client, self.dst_client = method, src_ws, dest_ws, src_client, dst_client
 
     def unsubscribe(self):
-        self.dest_ws.unsubscribe(self.client)
+        self.dest_ws.unsubscribe(self.dst_client)
 
     def callback(self, data):
-        self.src_ws.send(data=data, client=self.client)
+        self.src_ws.send(data=data, client=self.src_client)
 
     def errback(self, error):
-        self.src_ws.send(error=error, client=self.client)
+        self.src_ws.send(error=error, client=self.src_client)
 
     def __call__(self, *args, **kwargs):
         self.dest_ws.subscribe({
-            'client': self.client,
+            'client': self.dst_client,
             'callback': self.callback,
             'errback': self.errback
         }, self.method, *args, **kwargs)
         return self.src_ws.NO_RESPONSE
+
+    def __del__(self):
+        self.unsubscribe()
 
 
 class WebSocket(object):
@@ -364,11 +367,25 @@ class WebSocket(object):
         >>> authenticate = ws.make_caller('auth.authenticate')
         >>> authenticate('username', 'password')
         True
+
+        Sideboard supports "passthrough subscriptions", e.g.
+        -> a browser makes a subscription for the "foo.bar" method
+        -> the server has "foo" registered as a remote service
+        -> the server creates its own subscription to "foo.bar" on the remote
+           service and passes all results back to the client as they arrive
+
+        This method implements that by checking whether it was called from a
+        thread with an active websocket as part of a subscription request.  If
+        so then in addition to returning a callable, it also registers the
+        new subscription with the client websocket so it can be cleaned up when
+        the client websocket closes and/or when its subscription is canceled.
         """
+        client = sideboard.lib.threadlocal.get_client()
         originating_ws = sideboard.lib.threadlocal.get('websocket')
-        client = sideboard.lib.threadlocal.get('message', {}).get('client')
         if client and originating_ws:
-            return _Subscriber(client=client, src_ws=originating_ws, dest_ws=self, method=method)
+            sub = _Subscriber(method=method, src_client=client, dst_client=self._next_id('client'), src_ws=originating_ws, dest_ws=self)
+            originating_ws.passthru_subscriptions[client] = sub
+            return sub
         else:
             return lambda *args, **kwargs: self.call(method, *args, **kwargs)
 

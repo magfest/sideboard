@@ -3,6 +3,9 @@ from __future__ import unicode_literals
 import pytest
 from mock import Mock, ANY
 
+import ws4py.websocket
+
+from sideboard.websockets import WebSocketDispatcher
 from sideboard.lib import log, WebSocket, threadlocal, stopped
 from sideboard.tests import config_patcher
 
@@ -19,6 +22,13 @@ def ws(monkeypatch):
     ws._send = Mock()
     ws._next_id = lambda prefix: 'xxx'
     return ws
+
+
+@pytest.fixture
+def orig_ws(monkeypatch):
+    monkeypatch.setattr(ws4py.websocket.WebSocket, '__init__', Mock(return_value=None))
+    monkeypatch.setattr(WebSocketDispatcher, 'check_authentication', Mock(return_value='mock_username'))
+    return WebSocketDispatcher()
 
 
 def test_subscribe_basic(ws):
@@ -163,17 +173,17 @@ def test_make_method_caller(ws):
     ws.call.assert_called_with('foo.bar', 1, 2)
 
 
-def test_make_subscription_caller(ws):
-    orig_ws = Mock(spec=['NO_RESPONSE'])
+def test_make_subscription_caller(ws, orig_ws):
     threadlocal.reset(message={'client': 'xxx'}, websocket=orig_ws)
     func = ws.make_caller('foo.bar')
     assert func(1, 2) == orig_ws.NO_RESPONSE
     ws._send.assert_called_with(method='foo.bar', params=(1, 2), client=ANY)
 
 
-def test_make_subscription_unsubscribe(ws):
+def test_make_subscription_unsubscribe(ws, orig_ws):
     ws.unsubscribe = Mock()
-    threadlocal.reset(message={'client': 'xxx'}, websocket=Mock(spec=['NO_RESPONSE']))
+    ws._next_id = Mock(return_value='xxx')
+    threadlocal.reset(message={'client': 'yyy'}, websocket=orig_ws)
     ws.make_caller('foo.bar').unsubscribe()
     ws.unsubscribe.assert_called_with('xxx')
 
