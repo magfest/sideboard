@@ -669,6 +669,13 @@ class WebSocketDispatcher(WebSocket):
         return '<%s username=%s>' % (self.__class__.__name__, self.username)
 
 
+class WebSocketAuthError(Exception):
+    """
+    Exception raised by WebSocketDispatcher subclasses to indicate that there is
+    not a currently-logged-in user able to make a websocket connection.
+    """
+
+
 class WebSocketRoot(object):
     @cherrypy.expose
     def default(self):
@@ -682,8 +689,11 @@ class WebSocketChecker(WebSocketTool):
     def upgrade(self, **kwargs):
         try:
             kwargs['handler_cls'].check_authentication()
-        except:
+        except WebSocketAuthError as wsae:
             raise cherrypy.HTTPError(401, 'You must be logged in to establish a websocket connection.')
+        except:
+            log.error('unexpected websocket authentication error', exc_info=True)
+            raise cherrypy.HTTPError(401, 'unexpected authentication error')
         else:
             return WebSocketTool.upgrade(self, **kwargs)
 
