@@ -97,7 +97,7 @@ class SideboardWebSocket(WebSocketDispatcher):
 
         if config['ws.auth_required'] and not default_auth_checker():
             log.warning('websocket connections to this address must have a valid session')
-            raise WebSocketAuthError('you are not logged in')
+            raise WebSocketAuthError('You are not logged in')
 
         return cherrypy.session.get('username', '<UNAUTHENTICATED>')
 

@@ -689,7 +689,7 @@ class WebSocketChecker(WebSocketTool):
     def upgrade(self, **kwargs):
         try:
             kwargs['handler_cls'].check_authentication()
-        except WebSocketAuthError as wsae:
+        except WebSocketAuthError:
             raise cherrypy.HTTPError(401, 'You must be logged in to establish a websocket connection.')
         except:
             log.error('unexpected websocket authentication error', exc_info=True)
