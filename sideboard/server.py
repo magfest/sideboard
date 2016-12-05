@@ -8,7 +8,7 @@ import cherrypy
 import sideboard
 from sideboard.internal import connection_checker
 from sideboard.jsonrpc import _make_jsonrpc_handler
-from sideboard.websockets import WebSocketDispatcher, WebSocketRoot
+from sideboard.websockets import WebSocketDispatcher, WebSocketRoot, WebSocketAuthError
 from sideboard.lib import log, listify, config, render_with_templates, services, threadlocal
 from sideboard.lib._cp import auth_registry
 
@@ -93,11 +93,11 @@ class SideboardWebSocket(WebSocketDispatcher):
         host, origin = cherrypy.request.headers['host'], cherrypy.request.headers['origin']
         if ('//' + host.split(':')[0]) not in origin:
             log.error('Javascript websocket connections must follow same-origin policy; origin {!r} does not match host {!r}', origin, host)
-            raise ValueError('Origin and Host headers do not match')
+            raise WebSocketAuthError('Origin and Host headers do not match')
 
         if config['ws.auth_required'] and not default_auth_checker():
             log.warning('websocket connections to this address must have a valid session')
-            raise ValueError('you are not logged in')
+            raise WebSocketAuthError('You are not logged in')
 
         return cherrypy.session.get('username', '<UNAUTHENTICATED>')
 
