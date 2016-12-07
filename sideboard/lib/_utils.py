@@ -3,7 +3,9 @@ import os
 import json
 from functools import wraps
 from datetime import datetime, date
-from collections import Sized, Iterable, Mapping
+from contextlib import contextmanager
+from threading import RLock, Condition, current_thread
+from collections import Sized, Iterable, Mapping, defaultdict
 
 
 def is_listy(x):
@@ -148,3 +150,114 @@ def entry_point(func):
     return func
 
 _entry_points = {}
+
+
+class RWGuard(object):
+    """
+    This utility class provides the ability to perform read/write locking, such
+    that we can have any number of readers OR a single writer.  We give priority
+    to writers, who will get the lock before any readers.
+
+    These locks are reentrant, meaning that the same thread can acquire a read
+    or write lock multiple times, and will then need to release the lock the
+    same number of times it was acquired.  A thread with an acquired read lock
+    cannot acquire a write lock, or vice versa.  Locks can only be released by
+    the threads which acquired them.
+
+    This class is named RWGuard rather than RWLock because it is not itself a
+    lock, e.g. it doesn't have an acquire method, it cannot be directly used as
+    a context manager, etc.
+    """
+    def __init__(self):
+        self.lock = RLock()
+        self.waiting_writer_count = 0
+        self.acquired_writer = defaultdict(int)
+        self.acquired_readers = defaultdict(int)
+        self.ready_for_reads = Condition(self.lock)
+        self.ready_for_writes = Condition(self.lock)
+
+    @property
+    @contextmanager
+    def read_locked(self):
+        """
+        Context manager which acquires a read lock on entrance and releases it
+        on exit.  Any number of threads may acquire a read lock.
+        """
+        self.acquire_for_read()
+        try:
+            yield
+        finally:
+            self.release()
+
+    @property
+    @contextmanager
+    def write_locked(self):
+        """
+        Context manager which acquires a write lock on entrance and releases it
+        on exit.  Only one thread may acquire a write lock at a time.
+        """
+        self.acquire_for_write()
+        try:
+            yield
+        finally:
+            self.release()
+
+    def acquire_for_read(self):
+        """
+        NOTE: consumers are encouraged to use the "read_locked" context manager
+        instead of this method where possible.
+
+        This method acquires the read lock for the current thread, blocking if
+        necessary until there are no other threads with the write lock acquired
+        or waiting for the write lock to be available.
+        """
+        tid = current_thread().ident
+        assert tid not in self.acquired_writer, 'Threads which have already acquired a write lock may not lock for reading'
+        with self.lock:
+            while self.acquired_writer or (self.waiting_writer_count and tid not in self.acquired_readers):
+                self.ready_for_reads.wait()
+            self.acquired_readers[tid] += 1
+
+    def acquire_for_write(self):
+        """
+        NOTE: consumers are encouraged to use the "write_locked" context manager
+        instead of this method where possible.
+
+        This method acquires the write lock for the current thread, blocking if
+        necessary until no other threads have the write lock acquired and no
+        thread has the read lock acquired.
+        """
+        tid = current_thread().ident
+        assert tid not in self.acquired_readers, 'Threads which have already acquired a read lock may not lock for writing'
+        with self.lock:
+            while self.acquired_readers or (self.acquired_writer and tid not in self.acquired_writer):
+                self.waiting_writer_count += 1
+                self.ready_for_writes.wait()
+                self.waiting_writer_count -= 1
+            self.acquired_writer[tid] += 1
+
+    def release(self):
+        """
+        Release the read or write lock held by the current thread.  Since these
+        locks are reentrant, this method must be called once for each time the
+        lock was acquired.  This method raises an exception if called by a
+        thread with no read or write lock acquired.
+        """
+        tid = current_thread().ident
+        assert tid in self.acquired_readers or tid in self.acquired_writer, 'this thread does not hold a read or write lock'
+        with self.lock:
+            for counts in [self.acquired_readers, self.acquired_writer]:
+                counts[tid] -= 1
+                if counts[tid] <= 0:
+                    del counts[tid]
+
+            wake_readers = not self.waiting_writer_count
+            wake_writers = self.waiting_writer_count and not self.acquired_readers
+
+        if wake_writers:
+            with self.ready_for_writes:
+                self.ready_for_writes.notify()
+        elif wake_readers:
+            with self.ready_for_reads:
+                self.ready_for_reads.notify_all()
+
