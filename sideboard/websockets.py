@@ -464,6 +464,17 @@ class WebSocketDispatcher(WebSocket):
             except:
                 log.warn('ignoring unexpected trigger error', exc_info=True)
 
+    @property
+    def is_closed(self):
+        """
+        The "terminated" attribute tells us whether the socket was explictly
+        closed, this property performs a more rigorous check to let us know
+        if any of the fields which indicate the socket has been closed have been
+        set; this allows us to avoid spurious error messages by not attempting
+        to send messages on a socket which is in the process of closing.
+        """
+        return not self.stream or self.client_terminated or self.server_terminated or not self.sock
+
     def client_lock(self, client):
         """
         Sideboard has a pool of background threads which simultaneously executes
@@ -504,7 +515,15 @@ class WebSocketDispatcher(WebSocket):
 
         3) We lock when sending to ensure that our sends are thread-safe.
            Surprisingly, the "ws4py.threadedclient" class isn't thread-safe!
+
+        4) Subscriptions firing will sometimes trigger a send on a websocket
+           which has already been marked as closed.  When this happens we log a
+           debug message and then exit without error.
         """
+        if self.is_closed:
+            log.debug('ignoring send on an already closed websocket: {}', message)
+            return
+
         message = {k: v for k, v in message.items() if v is not None}
         if 'data' in message and 'client' in message:
             fingerprint = _fingerprint(message['data'])
@@ -519,7 +538,8 @@ class WebSocketDispatcher(WebSocket):
         message = json.dumps(message, cls=sideboard.lib.serializer,
                                       separators=(',', ':'), sort_keys=True)
         with self.send_lock:
-            WebSocket.send(self, message)
+            if not self.is_closed:
+                WebSocket.send(self, message)
 
     def closed(self, code, reason=''):
         """
@@ -685,6 +705,7 @@ class WebSocketRoot(object):
 class WebSocketChecker(WebSocketTool):
     def __init__(self):
         cherrypy.Tool.__init__(self, 'before_handler', self.upgrade)
+        self._priority = cherrypy.tools.sessions._priority + 1  # must be initialized after the sessions tool
 
     def upgrade(self, **kwargs):
         try:
