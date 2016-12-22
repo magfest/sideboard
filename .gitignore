@@ -21,3 +21,4 @@ node_modules/
 distribute-*.tar.gz
 distribute_setup.py
 .eggs/
+data/*
