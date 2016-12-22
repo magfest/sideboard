@@ -1,6 +1,13 @@
 from __future__ import unicode_literals
 import time
+import platform
+import psutil
 import heapq
+import prctl
+import ctypes
+import sys
+import traceback
+from sideboard.debugging import register_diagnostics_status_function
 from warnings import warn
 from threading import Thread, Timer, Event, Lock
 
@@ -9,12 +16,67 @@ from six.moves.queue import Queue, Empty
 from sideboard.lib import log, on_startup, on_shutdown
 
 
+import threading
+
+
+def _get_linux_thread_tid():
+    """
+    Get the current linux thread ID as it appears in /proc/[pid]/task/[tid]
+    :return: Linux thread ID if available, or -1 if any errors / not on linux
+    """
+    try:
+        if not platform.system().startswith('Linux'):
+            raise ValueError('Can only get thread id on Linux systems')
+        syscalls = {
+          'i386':   224,   # unistd_32.h: #define __NR_gettid 224
+          'x86_64': 186,   # unistd_64.h: #define __NR_gettid 186
+        }
+        syscall_num = syscalls[platform.machine()]
+        tid = ctypes.CDLL('libc.so.6').syscall(syscall_num)
+    except:
+        tid = -1
+    return tid
+
+
+def _set_current_thread_ids_from(thread):
+    # thread ID part 1: set externally visible thread name in /proc/[pid]/tasks/[tid]/comm to our internal name
+    if thread.name:
+        # linux doesn't allow thread names > 15 chars, and we ideally want to see the end of the name.
+        # attempt to shorten the name if we need to.
+        shorter_name = thread.name if len(thread.name) < 15 else thread.name.replace('CP Server Thread', 'CPServ')
+        prctl.set_name(shorter_name)
+
+    # thread ID part 2: capture linux-specific thread ID (TID) and store it with this thread object
+    # if TID can't be obtained or system call fails, tid will be -1
+    thread.linux_tid = _get_linux_thread_tid()
+
+
+# inject our own code at the start of every thread's start() method which sets the thread name via prctl().
+# Python thread names will now be shown in external system tools like 'top', '/proc', etc.
+def _thread_name_insert(self):
+    _set_current_thread_ids_from(self)
+    threading.Thread._bootstrap_inner_original(self)
+
+if sys.version_info[0] == 3:
+    threading.Thread._bootstrap_inner_original = threading.Thread._bootstrap_inner
+    threading.Thread._bootstrap_inner = _thread_name_insert
+else:
+    threading.Thread._bootstrap_inner_original = threading.Thread._Thread__bootstrap
+    threading.Thread._Thread__bootstrap = _thread_name_insert
+
+# set the ID's of the main thread
+threading.current_thread().setName('sideboard_main')
+_set_current_thread_ids_from(threading.current_thread())
+
+
 class DaemonTask(object):
-    def __init__(self, func, interval=0.1, threads=1):
+    def __init__(self, func, interval=0.1, threads=1, name=None):
         self.lock = Lock()
         self.threads = []
         self.stopped = Event()
         self.func, self.interval, self.thread_count = func, interval, threads
+        self.name = name or self.func.__name__
+
         on_startup(self.start)
         on_shutdown(self.stop)
 
@@ -39,7 +101,7 @@ class DaemonTask(object):
                 del self.threads[:]
                 for i in range(self.thread_count):
                     t = Thread(target = self.run)
-                    t.name = '{}-{}'.format(self.func.__name__, i + 1)
+                    t.name = '{}-{}'.format(self.name, i + 1)
                     t.daemon = True
                     t.start()
                     self.threads.append(t)
@@ -145,3 +207,50 @@ class GenericCaller(DaemonTask):
 
     def delayed(self, delay, func, *args, **kwargs):
         self.q.put([func, args, kwargs], delay=delay)
+
+
+def _get_thread_current_stacktrace(thread_stack, thread):
+    out = []
+    linux_tid = getattr(thread, 'linux_tid', -1)
+    status = '[unknown]'
+    if linux_tid != -1:
+        status = psutil.Process(linux_tid).status()
+    out.append('\n--------------------------------------------------------------------------')
+    out.append('# Thread name: "%s"\n# Python thread.ident: %d\n# Linux Thread PID (TID): %d\n# Run Status: %s'
+                % (thread.name, thread.ident, linux_tid, status) )
+    for filename, lineno, name, line in traceback.extract_stack(thread_stack):
+        out.append('File: "%s", line %d, in %s' % (filename, lineno, name))
+        if line:
+            out.append('  %s' % (line.strip()))
+    return out
+
+
+@register_diagnostics_status_function
+def threading_information():
+    out = []
+    threads_by_id = dict([(thread.ident, thread) for thread in threading.enumerate()])
+    for thread_id, thread_stack in sys._current_frames().items():
+        thread = threads_by_id.get(thread_id, '')
+        out += _get_thread_current_stacktrace(thread_stack, thread)
+    return '\n'.join(out)
+
+
+def _to_megabytes(bytes):
+    return str(int(bytes / 0x100000)) + 'MB'
+
+@register_diagnostics_status_function
+def general_system_info():
+    """
+    Print general system info
+    TODO:
+    - print memory nicer, convert mem to megabytes
+    - disk partitions usage,
+    - # of open file handles
+    - # free inode count
+    - # of cherrypy session files
+    - # of cherrypy session locks (should be low)
+    """
+    out = []
+    out += ['Mem: ' + repr(psutil.virtual_memory())]
+    out += ['Swap: ' + repr(psutil.swap_memory())]
+    return '\n'.join(out)
