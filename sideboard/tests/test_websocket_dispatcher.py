@@ -22,6 +22,7 @@ def cleanup_threadlocal():
 def wsd(monkeypatch):
     monkeypatch.setattr(WebSocket, 'send', Mock())
     monkeypatch.setattr(WebSocket, 'closed', Mock())
+    monkeypatch.setattr(WebSocketDispatcher, 'is_closed', False)
     monkeypatch.setattr(WebSocketDispatcher, 'check_authentication', lambda self: 'mock_user')
     return WebSocketDispatcher(None)
 
@@ -433,3 +434,10 @@ def test_handle_message_remote_subscribe(handler, ws):
     ws.subscribe.assert_called_with(ANY, 'remote.method', 1, 2)
     assert not ws.call.called
     assert not handler.send.called
+
+
+def test_skip_send_if_closed(monkeypatch, wsd):
+    wsd.send()
+    monkeypatch.setattr(WebSocketDispatcher, 'is_closed', True)
+    wsd.send()
+    assert WebSocket.send.call_count == 1

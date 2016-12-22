@@ -260,4 +260,3 @@ class RWGuard(object):
         elif wake_readers:
             with self.ready_for_reads:
                 self.ready_for_reads.notify_all()
-
