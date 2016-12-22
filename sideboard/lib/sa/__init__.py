@@ -205,6 +205,13 @@ class SessionManager(object):
             log.error('SessionManager went out of scope without underlying connection being closed; did you forget to use it as a context manager?')
             self.session.close()
 
+    """
+    Initializes the database connection for use, and attempt to create any
+    tables registered in our metadata which do not actually exist yet in the
+    database.
+
+    drop: USE WITH CAUTION: If True, then we will drop any tables in the database.
+    """
     @classmethod
     def initialize_db(cls, drop=False):
         configure_mappers()

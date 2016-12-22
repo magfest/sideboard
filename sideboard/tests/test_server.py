@@ -23,7 +23,7 @@ from sideboard.tests import service_patcher, config_patcher
 from sideboard.tests.test_sa import Session
 
 
-@pytest.mark.functional
+@pytest.mark.nonfunctional
 class SideboardServerTest(TestCase):
     port = config['cherrypy']['server.socket_port']
     jsonrpc_url = 'http://127.0.0.1:{}/jsonrpc'.format(port)
