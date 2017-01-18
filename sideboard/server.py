@@ -15,8 +15,15 @@ from sideboard.lib._cp import auth_registry
 default_auth_checker = auth_registry[config['default_authenticator']]['check']
 
 
+def reset_threadlocal():
+    threadlocal.reset(**{field: cherrypy.session.get('field') for field in config['ws.session_fields']})
+
+cherrypy.tools.reset_threadlocal = cherrypy.Tool('before_handler', reset_threadlocal, priority=51)
+
+
 def jsonrpc_reset(body):
-    threadlocal.reset(username=cherrypy.session.get('username'), client=body.get('websocket_client'))
+    reset_threadlocal()
+    threadlocal.set('client', body.get('websocket_client'))
 
 
 def jsonrpc_auth(body):
@@ -95,11 +102,11 @@ class SideboardWebSocket(WebSocketDispatcher):
             log.error('Javascript websocket connections must follow same-origin policy; origin {!r} does not match host {!r}', origin, host)
             raise WebSocketAuthError('Origin and Host headers do not match')
 
-        if config['ws.auth_required'] and not default_auth_checker():
+        if config['ws.auth_required'] and not cherrypy.session.get(config['ws.auth_field']):
             log.warning('websocket connections to this address must have a valid session')
             raise WebSocketAuthError('You are not logged in')
 
-        return cherrypy.session.get('username', '<UNAUTHENTICATED>')
+        return WebSocketDispatcher.check_authentication()
 
 
 class SideboardRpcWebSocket(SideboardWebSocket):
@@ -112,13 +119,7 @@ class SideboardRpcWebSocket(SideboardWebSocket):
 
     @classmethod
     def check_authentication(cls):
-        return 'rpc'
-
-
-def reset_threadlocal():
-    threadlocal.reset(username=cherrypy.session.get('username'))
-
-cherrypy.tools.reset_threadlocal = cherrypy.Tool('before_handler', reset_threadlocal, priority=51)
+        return {'username': 'rpc'}
 
 
 app_config = {

@@ -323,12 +323,6 @@ class WebSocketDispatcher(WebSocket):
     class is where we respond to RPC requests.
     """
 
-    username = None
-    """
-    See __init__ for documentation on this field.  It also exists as a class
-    variable so that instances which do not set it have a default value.
-    """
-
     NO_RESPONSE = object()
     """
     This object is used as a sentinel value for situations where we want to
@@ -374,11 +368,13 @@ class WebSocketDispatcher(WebSocket):
             along to the remote service and send back the responses.  This
             dictionary maps client ids to those subscription objects.
 
-        username: The username of the currently-authenticated user who made the
-            incoming websocket connection.  Remember that Sideboard exposes two
-            websocket handlers at /ws and /wsrpc, with /ws being auth-protected
-            (so the username field will be meaningful) and /wsrpc being client-
-            cert protected (so the username will always be 'rpc').
+        session_fields: We copy session data for the  currently-authenticated
+            user who made the incoming websocket connection; by default we only
+            copy the username, but this can be overridden in configuration.
+            Remember that Sideboard exposes two websocket handlers at /ws and
+            /wsrpc, with /ws being auth-protected (so the username field will be
+            meaningful) and /wsrpc being client-cert protected (so the username
+            will always be 'rpc').
 
         cached_queries and cached_fingerprints: When we receive a subscription
             update, Sideboard re-runs all of the subscription methods to see if
@@ -410,16 +406,20 @@ class WebSocketDispatcher(WebSocket):
         self.passthru_subscriptions = {}
         self.client_locks = defaultdict(RLock)
         self.cached_queries, self.cached_fingerprints = defaultdict(dict), defaultdict(dict)
-        self.username = self.check_authentication()
+        self.session_fields = self.check_authentication()
 
     @classmethod
     def check_authentication(cls):
         """
         This method raises an exception if the user is not currently logged in,
-        and otherwise returns the username of the currently-logged-in user.
-        Subclasses can override this method to change the authentication method.
+        and otherwise returns a dict with all of the session fields we want to
+        store for this websocket so that we can set them as threadlocal global
+        variables for all subsequent websocket RPC requests.  By default we only
+        return the username of the currently-logged-in user in this manner, but
+        this can be changed via the ws.session_fields config option.  Subclasses
+        can also override this method to change how we handle authentication.
         """
-        return cherrypy.session['username']
+        return {field: cherrypy.session.get(field) for field in config['ws.session_fields']}
 
     @classmethod
     def get_all_subscribed(cls):
@@ -605,7 +605,7 @@ class WebSocketDispatcher(WebSocket):
         """
         if callback in self.cached_queries[client]:
             function, args, kwargs, client_data = self.cached_queries[client][callback]
-            threadlocal.reset(websocket=self, username=self.username, client_data=client_data)
+            threadlocal.reset(websocket=self, client_data=client_data, **self.session_fields)
             result = function(*args, **kwargs)
             self.send(trigger=trigger, client=client, callback=callback, data=result)
 
@@ -661,7 +661,7 @@ class WebSocketDispatcher(WebSocket):
         """
         before = time.time()
         duration, result = None, None
-        threadlocal.reset(websocket=self, message=message, username=self.username)
+        threadlocal.reset(websocket=self, message=message, **self.session_fields)
         action, callback, client, method = message.get('action'), message.get('callback'), message.get('client'), message.get('method')
         try:
             with self.client_lock(client):
@@ -686,7 +686,10 @@ class WebSocketDispatcher(WebSocket):
                 self.send(data=result, callback=callback, client=client, _time=duration)
 
     def __repr__(self):
-        return '<%s username=%s>' % (self.__class__.__name__, self.username)
+        return '<{} {}>'.format(
+            self.__class__.__name__,
+            ' '.join('{}={}'.format(k, v) for k, v in self.session_fields.items())
+        )
 
 
 class WebSocketAuthError(Exception):

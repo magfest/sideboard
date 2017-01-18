@@ -27,7 +27,7 @@ def ws(monkeypatch):
 @pytest.fixture
 def orig_ws(monkeypatch):
     monkeypatch.setattr(ws4py.websocket.WebSocket, '__init__', Mock(return_value=None))
-    monkeypatch.setattr(WebSocketDispatcher, 'check_authentication', Mock(return_value='mock_username'))
+    monkeypatch.setattr(WebSocketDispatcher, 'check_authentication', Mock(return_value={'username': 'mock_username'}))
     return WebSocketDispatcher()
 
 
