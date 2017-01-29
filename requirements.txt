@@ -3,7 +3,7 @@ cherrypy==3.6.0
 #python-ldap==2.3.13
 ws4py==0.3.2
 SQLAlchemy==1.0.0
-six==1.5.2
+six==1.10.0
 Jinja2==2.6
 rpctools==0.2.1
 logging_unterpolation==0.2.0
@@ -12,7 +12,7 @@ pytest==3.0.1
 mock==1.0.1
 Sphinx==1.2.1
 coverage==3.6
-paver==1.2.2
+paver==1.2.4
 wheel==0.24.0
 pip==1.5.6
 sh==1.09
