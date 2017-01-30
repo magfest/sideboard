@@ -57,6 +57,27 @@ def test_subscribe_error(ws):
     assert 'xxx' in ws._callbacks
     assert log.warn.called
 
+def test_subscribe_paramback(ws):
+    paramback = lambda: (5, 6)
+    callback, errback = Mock(), Mock()
+    request = {
+        'client': 'yyy',
+        'callback': callback,
+        'errback': errback,
+        'paramback': paramback
+    }
+    assert 'yyy' == ws.subscribe(request, 'foo.bar')
+    assert ws._callbacks['yyy'] == {
+        'client': 'yyy',
+        'callback': callback,
+        'errback': errback,
+        'paramback': paramback,
+        'method': 'foo.bar',
+        'params': (5, 6)
+    }
+    ws._send.assert_called_with(method='foo.bar', params=(5, 6), client='yyy')
+    assert not log.warn.called
+
 def test_unsubscribe(ws):
     ws._callbacks['xxx'] = {}
     ws.unsubscribe('xxx')

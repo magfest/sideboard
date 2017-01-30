@@ -10,20 +10,59 @@ import jinja2
 import cherrypy
 
 import sideboard.lib
-from sideboard.lib import log
+from sideboard.lib import log, config
 
 _startup_registry = defaultdict(list)
 _shutdown_registry = defaultdict(list)
 
 
-def on_startup(func, priority=50):
+def _on_startup(func, priority):
     _startup_registry[priority].append(func)
     return func
 
 
-def on_shutdown(func, priority=50):
+def _on_shutdown(func, priority):
     _shutdown_registry[priority].append(func)
     return func
+
+
+def on_startup(func=None, priority=50):
+    """
+    Register a function to be called when Sideboard starts.  Startup functions
+    have a priority, and the functions are invoked in priority order, where
+    low-priority-numbered functions are invoked before higher numbers.
+
+    Startup functions may be registered in one of three ways:
+
+    1) A function can be passed directly, e.g.
+        on_startup(callback_function)
+        on_startup(callback_function, priority=25)
+
+    2) This function can be used as a decorator, e.g.
+        @on_startup
+        def callback_function():
+            ...
+
+    3) This function can be used as a decorator with a priority value, e.g.
+        @on_startup(priority=25)
+        def callback_function():
+            ...        
+    """
+    if func:
+        return _on_startup(func, priority)
+    else:
+        return lambda func: _on_startup(func, priority)
+
+
+def on_shutdown(func=None, priority=50):
+    """
+    Register a function to be called when Sideboard exits.  See the on_startup
+    function above for how this is used.
+    """
+    if func:
+        return _on_shutdown(func, priority)
+    else:
+        return lambda func: _on_shutdown(func, priority)
 
 
 def _run_startup():
@@ -39,7 +78,6 @@ def _run_shutdown():
                 func()
             except Exception:
                 log.warn('Ignored exception during shutdown', exc_info=True)
-
 
 stopped = Event()
 on_startup(stopped.clear, priority=0)
@@ -60,7 +98,7 @@ def mainloop():
     try:
         while not stopped.is_set():
             try:
-                stopped.wait(0.1)
+                stopped.wait(config['thread_wait_interval'])
             except KeyboardInterrupt:
                 break
     finally:

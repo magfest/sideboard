@@ -51,6 +51,8 @@ class SideboardServerTest(TestCase):
 
     @classmethod
     def start_cherrypy(cls):
+        config['thread_wait_interval'] = 0.1
+
         class Root(object):
             @cherrypy.expose
             def index(self):

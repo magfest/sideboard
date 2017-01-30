@@ -56,7 +56,7 @@ Let's start by cloning the Sideboard repo and running it without any plugins:
 
 .. code-block:: none
 
-    $ git clone https://github.com/appliedsec/sideboard.git
+    $ git clone https://github.com/magfest/sideboard
     $ cd sideboard/
     $ paver make_venv
     $ ./env/bin/python sideboard/run_server.py
@@ -361,9 +361,13 @@ So let's make this extra-dynamic; we'll use websockets to subscribe to our servi
     </html>
 
 Note that when you press the "Refresh" button the data gets automatically updated even though all we did was make call to the server without doing anything with the response.  That happened because of the following sequence of steps:
+
 * we subscribe to the ``ragnarok.all_checks`` method when the page loads, so our callback will be called anytime we get a message from the server with new data
+
 * when the refresh button is pressed, it calls the ``ragnarok.check_for_apocalypse`` method which updates the database
+
 * because of how we used the ``@subscribes`` and ``@notifies`` decorators on these methods, calling ``check_for_apocalypse`` automatically causes the latest data to be pushed to the client which is subscribed to ``all_checks``
+
 * our callback is fired again, which updates the data on the scope and the latest data is rendered to the page
 
 Even without pressing the refresh button, the data on this page would still update every 24 hours since we defined that ``DaemonTask`` which calls ``check_for_apocalypse`` once per day.
@@ -375,6 +379,55 @@ Since this is our only plugin, we'd probably like this webpage to be the defauly
     default_url = string(default="/ragnarok")
 
 So now if we re-start our web server by re-running ``./env/bin/python sideboard/run_server.py`` and go to `<http://localhost:8282/>`_ we'll be taken directly to this page.
+
+
+
+Using Django With Sideboard
+===========================
+
+CherryPy is a WSGI container, which means that anything which runs in Apache with ``mod_wsgi`` can run in CherryPy.  In this section we'll focus on creating a Django project inside a Sideboard plugin.  We're specifically documenting how to use Django because it's the most popular Python web framework, but other WSGI-compatible frameworks such as Flask can be used in the same way.
+
+Let's create a new Sideboard plugin, this time without any of the usual pieces and tell it that we'll be including a Django site called ``mysite`` (we'll be following the Django tutorial, which uses that name).
+
+.. code-block:: none
+
+    ./env/bin/paver create_plugin --no_webapp --no_sqlalchemy --no_service --no_sphinx --django=mysite --name=unchained
+
+After doing this, we now have the following directory structure created in the ``plugins`` directory:
+
+.. code-block:: none
+
+    unchained/
+    |-- development-defaults.ini
+    |-- fabfile.py
+    |-- MANIFEST.in
+    |-- package-support
+    |   `-- unchained.cfg
+    |-- requirements.txt
+    |-- setup.cfg
+    |-- setup.py
+    `-- unchained
+        |-- configspec.ini
+        |-- __init__.py
+        |-- tests
+        |   `-- __init__.py
+        `-- _version.py
+
+Note that this did **not** automatically create the Django project.  The plugin that was created expects that Django project to exist, and it won't work until we create that project manually.  First, we'll need to add Django as a dependency by opening up ``plugins/unchained/requirements.txt`` and adding something like ``Django==1.9.2`` or whatever version of Django you'd like to use.  Then you can run ``python setup.py develop`` in your plugin's directory (or run ``paver install_deps`` from the main Sideboard directory).
+
+After that, you can follow the `Django tutorial <https://docs.djangoproject.com/en/1.9/intro/tutorial01/>`_ to create a site.  As explained in the tutorial, in your top-level ``unchained`` directory you can run ``django-admin startproject mysite`` to creates the Django project alongside your plugin module.  The one thing you'll need to do differently from what the tutorial says is that you'll need to set
+
+.. code-block:: python
+
+    STATIC_URL = '/unchained/static/'
+
+in ``plugins/unchained/mysite/mysite/settings.py`` because we're mounting our Django app at the ``/unchained`` mount point in CherryPy.
+
+This approach maintains a Sideboard plugin whose module lives alongside a standalone Django project.  We do this in order to more easily run ``manage.py`` commands, which shouldn't generally need to know or care about Sideboard.  This also means that you can potentially write a Django app that will run in any mod_wsgi container, then have the Sideboard plugin call into it when you need to do Sideboard-specific things such as exposing ``services`` API calls.
+
+From here you can run through the Django tutorial.  You'll be able to visit `<http://localhost:8282/unchained/admin/>`_ to see the Django admin interface, and once you write the "polls" app you'll be able to visit `<http://localhost:8282/unchained/polls>`_ to access its views.  (You don't currently get links to these in the ``/list_plugins`` page of Sideboard.)
+
+Your Django project will be included in your RPM as packaged by your ``fabfile``.
 
 
 
@@ -455,7 +508,7 @@ Services
     
     .. method:: register(module[, namespace])
     
-        exposes everything in a module (or any object with callable functions)
+        Exposes all methods whose names do not begin with underscores in a module (or any object with callable functions).  If the module defines ``__all__``, only methods included in ``__all__`` will be exposed.
     
         :param module: the module you are exposing; any function in this module which is not prefixed with an underscore will be callable
         :param namespace: the prefix which consumers calling your method over RPC will use; if omitted this defaults to your module name
@@ -730,11 +783,13 @@ Sideboard provides several useful classes for establishing websocket connections
         
                          * *callback* (required): a function taking a single argument; this is called every time we receive data back from the server
         
-                         * *errback* (required): a function taking a single argument; this is called every time we recieve an error response from the server and passed the error message
+                         * *errback* (optional): a function taking a single argument; this is called every time we recieve an error response from the server and passed the error message (if omitted we log an error message and continue)
+        
+                         * *paramback* (optional): a function taking no arguments; if present, this is called to generate the params for this subscription, both initially and every time the websocket reconnects
         
                          * *client* (optional): the client id to use; this will be automatically generated, and you should omit this unless you really know what you're doing
         
-        :param method: the name of the method you want to subscribe to; you may pass either positional or keyword arguments (but not both) to this method which will be sent as part of the RPC message
+        :param method: the name of the method you want to subscribe to; you may pass either positional or keyword arguments (but not both) to this method which will be sent as part of the RPC message.  If "paramback" is passed (see above) then args/kwargs will be ignored entirely and that will be used to generate the parameters.
         :returns: the automatically generated client id; you can pass this to ``unsubscribe`` if you want to keep this connection open but cancel this one subscription
     
     .. method:: unsubscribe(client1[, client2[, ...]])
@@ -919,7 +974,7 @@ When we refer to "Sideboard starting" and "Sideboard stopping" we are referring 
 
 .. function:: on_startup(func[, priority=50])
     
-    Cause a function to get called on startup.  You can use this as a decorator, or directly call it and pass a priority level which indicates the order in which the startup functions should be called.
+    Cause a function to get called on startup.  You can use this as a decorator or directly call it.  The priority level indicates the order in which the startup functions should be called, where low numbers come before high numbers.
     
     .. code-block:: python
     
@@ -927,10 +982,14 @@ When we refer to "Sideboard starting" and "Sideboard stopping" we are referring 
         def f():
             print("Hello World!")
         
+        @on_startup(priority=40)
         def g():
             print("Hello Kitty!")
         
-        on_startup(g, priority=40)
+        def h():
+            print("Goodbye World!")
+        
+        on_startup(h, priority=60)
     
     :param func: The function to be called on startup; this function must be callable with no arguments.
     :param priority: Order in which startup functions will be called (lower priority items are called first); this can be any integer and the numbers are used for nothing other than ordering the handlers.
@@ -1073,6 +1132,13 @@ Miscellaneous
         :param key: name (as a string) of the value to store
         :param value: the value to store; this can be anything and does not need to be pickleable or otherwise serializable
     
+    .. classmethod:: setdefault(key, value)
+        
+        Check whether the given key already has a value set; if not then set the provided value.  Either way, return whatever the current value now is.
+        
+        :param key: name (as a string) of the value to optionally-set-and-definitely-return
+        :param value: default value to set if no value is already set for this key
+    
     .. classmethod:: get_client()
         
         Returns the websocket client id used to make this request, or None if not applicable.  This value may be present in both websocket and jsonrpc requests; in the latter case it would be present as the ``websocket_client`` key of the request, e.g. a jsonrpc request that looks like this:
@@ -1086,6 +1152,11 @@ Miscellaneous
                 "params": ["20191"],
                 "websocket_client": "client-623"
             }
+    
+    .. attribute:: client_data
+
+        Class property which returns a dictionary.  For websocket subscriptions, this dictionary is persisted and then restored before the function is re-called, so that methods can store data on a per-subscription basis.  This is like a server "session" except that it's per-subscription instead of per-user.
+
 
 
 sideboard.lib.sa

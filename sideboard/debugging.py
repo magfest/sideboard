@@ -1,3 +1,4 @@
+from __future__ import unicode_literals
 import os
 
 # create a list of status functions which can inspect information of the running process

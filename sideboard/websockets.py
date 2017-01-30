@@ -17,8 +17,10 @@ from ws4py.websocket import WebSocket
 from ws4py.server.cherrypyserver import WebSocketPlugin, WebSocketTool
 
 import sideboard.lib
-from sideboard.lib import log, Caller
+from sideboard.lib import log, class_property, Caller
 from sideboard.config import config
+
+local_subscriptions = defaultdict(list)
 
 
 class threadlocal(object):
@@ -33,6 +35,12 @@ class threadlocal(object):
         return setattr(cls._threadlocal, key, val)
 
     @classmethod
+    def setdefault(cls, key, val):
+        val = cls.get(key, val)
+        cls.set(key, val)
+        return val
+
+    @classmethod
     def clear(cls):
         cls._threadlocal.__dict__.clear()
 
@@ -45,6 +53,10 @@ class threadlocal(object):
         cls.clear()
         for key, val in kwargs.items():
             cls.set(key, val)
+
+    @class_property
+    def client_data(cls):
+        return cls.setdefault('client_data', {})
 
 
 def _normalize_channels(*channels):
@@ -102,8 +114,22 @@ def _normalize_channels(*channels):
 
 
 def notify(channels, trigger="manual", delay=0, originating_client=None):
-    broadcaster.delayed(delay, _normalize_channels(*sideboard.lib.listify(channels)),
-                        trigger=trigger, originating_client=originating_client or threadlocal.get_client())
+    """
+    Manually trigger all subscriptions on the given channels.  The following
+    optional parameters may be specified:
+
+    trigger: Used in log messages if you want to distinguish between triggers.
+    delay: If provided, wait this many seconds before triggering the broadcast.
+    originating_client: Websocket subscriptions will NOT fire if they have the
+                        same client as the trigger.
+    """
+    channels = _normalize_channels(*sideboard.lib.listify(channels))
+    context = {
+        'trigger': trigger,
+        'originating_client': originating_client or threadlocal.get_client()
+    }
+    broadcaster.delayed(delay, channels, **context)
+    local_broadcaster.delayed(delay, channels, **context)
 
 
 def notifies(*args, **kwargs):
@@ -164,6 +190,41 @@ def subscribes(*args):
         return func
 
     return decorated_func
+
+
+def locally_subscribes(*args):
+    """
+    The @subscribes decorator registers a function as being one which clients
+    may subscribe to via websocket.  This decorator may be used to register a
+    function which shall be called locally anytime a notify occurs, e.g.
+
+    @locally_subscribes('example.channel')
+    def f():
+        print('f was called')
+
+    notify('example.channel')  # causes f() to be called in a separate thread
+    """
+    def decorated_func(func):
+        for channel in _normalize_channels(*args):
+            local_subscriptions[channel].append(func)
+        return func
+
+    return decorated_func
+
+
+def local_broadcast(channels, trigger=None, originating_client=None):
+    """Triggers callbacks registered via @locally_subscribes"""
+    triggered = set()
+    for channel in sideboard.lib.listify(channels):
+        for callback in local_subscriptions[channel]:
+            triggered.add(callback)
+
+    for callback in triggered:
+        threadlocal.reset(trigger=trigger, originating_client=originating_client)
+        try:
+            callback()
+        except:
+            log.error('unexpected error on local broadcast callback', exc_info=True)
 
 
 def _fingerprint(x):
@@ -300,7 +361,7 @@ class WebSocketDispatcher(WebSocket):
         for client in sideboard.lib.listify(clients):
             self.client_locks.pop(client, None)
             self.cached_fingerprints.pop(client, None)
-            for func, args, kwargs in self.cached_queries[client].values():
+            for func, args, kwargs, client_data in self.cached_queries[client].values():
                 if hasattr(func, 'unsubscribe'):
                     func.unsubscribe()  # remote subscriptions
             self.cached_queries.pop(client, None)
@@ -320,13 +381,14 @@ class WebSocketDispatcher(WebSocket):
 
     def trigger(self, client, callback, trigger=None):
         if callback in self.cached_queries[client]:
-            function, args, kwargs = self.cached_queries[client][callback]
+            function, args, kwargs, client_data = self.cached_queries[client][callback]
+            threadlocal.set('client_data', client_data)
             result = function(*args, **kwargs)
             self.send(trigger=trigger, client=client, callback=callback, data=result)
 
     def update_triggers(self, client, callback, function, args, kwargs, result, duration=None):
         if hasattr(function, 'subscribes') and client is not None:
-            self.cached_queries[client][callback] = (function, args, kwargs)
+            self.cached_queries[client][callback] = (function, args, kwargs, threadlocal.client_data)
             self.update_subscriptions(client, callback, function.subscribes)
         if client is not None and callback is None and result is not self.NO_RESPONSE:
             self.send(trigger='subscribe', client=client, data=result, _time=duration)
@@ -408,5 +470,6 @@ else:
     WebSocketPlugin.start.priority = 66
 websocket_plugin.subscribe()
 
+local_broadcaster = Caller(local_broadcast)
 broadcaster = Caller(WebSocketDispatcher.broadcast)
 responder = Caller(WebSocketDispatcher.handle_message, threads=config['ws.thread_pool'])

@@ -1,5 +1,6 @@
 from __future__ import unicode_literals
 import os
+import ssl
 
 from rpctools.jsonrpc import ServerProxy
 
@@ -11,8 +12,10 @@ class _ServiceDispatcher(object):
         self.services, self.name = services, name
 
     def __getattr__(self, method):
+        from sideboard.lib import is_listy
         assert self.name in self.services, '{} is not registered as a service'.format(self.name)
         service = self.services[self.name]
+        assert not is_listy(getattr(service, '__all__', None)) or method in service.__all__, 'unable to call non-whitelisted method {}.{}'.format(self.name, method)
         func = service.make_caller('{}.{}'.format(self.name, method)) if isinstance(service, WebSocket) else getattr(service, method, None)
         assert func and hasattr(func, '__call__') and not method.startswith('_'), 'no such method {}.{}'.format(self.name, method)
         return func
@@ -91,9 +94,9 @@ class _Services(object):
         """
         return self._services
 
-    def _register_websocket(self, url=None, **ws_kwargs):
+    def _register_websocket(self, url=None, connect_immediately=True, **ws_kwargs):
         if url not in self._websockets:
-            self._websockets[url] = WebSocket(url, **ws_kwargs)
+            self._websockets[url] = WebSocket(url, connect_immediately=connect_immediately, **ws_kwargs)
         return self._websockets[url]
 
     def get_websocket(self, service_name=None):
@@ -114,30 +117,94 @@ class _Services(object):
 services = _Services()
 
 
+def _rpc_opts(host, service_config=None):
+    """
+    Sideboard uses client certs for backend service authentication.  There's a
+    global set of config options which determine the SSL settings we pass to our
+    RPC libraries, but sometimes different services require client certs issued
+    by different CAs.  In those cases, we define a config subsection of the main
+    [rpc_services] section to override those settings.
+
+    This function takes a hostname and for each config option, it returns either
+    the hostname-specific config option if it exists, or the global config option
+    if it doesn't.  Specifically, this returns a dict of option names/values.
+
+    If the service_config parameter is passed, it uses that as the config section
+    from which to draw the hostname-specific options.  Otherwise it searches
+    the [rpc_services] config section for Sideboard and for all Sideboard plugins
+    which have a "config" object defined in order to find options for that host.
+    """
+    from sideboard.internal.imports import plugins
+    section = service_config
+    if service_config is not None:  # check explicitly for None because service_config might be {}
+        section = service_config
+    else:
+        rpc_sections = {host: section for host, section in config['rpc_services'].items() if isinstance(section, dict)}
+        for plugin in plugins.values():
+            plugin_config = getattr(plugin, 'config', None)
+            if isinstance(plugin_config, dict):
+                rpc_sections.update({host: section for host, section in plugin_config.get('rpc_services', {}).items() if isinstance(section, dict)})
+        section = rpc_sections.get(host, {})
+
+    opts = {}
+    for setting in ['client_key', 'client_cert', 'ca', 'ssl_version']:
+        path = section.get(setting, config[setting])
+        if path and setting != 'ssl_version':
+            assert os.path.exists(path), '{} config option set to path not found on the filesystem: {}'.format(setting, path)
+
+        opts[setting] = path
+    return opts
+
+
+def _ssl_opts(rpc_opts):
+    """
+    Given a dict of config options returned by _rpc_opts, return a dict of
+    options which can be passed to the ssl module.
+    """
+    ssl_opts = {
+        'ca_certs': rpc_opts['ca'],
+        'keyfile': rpc_opts['client_key'],
+        'certfile': rpc_opts['client_cert'],
+        'cert_reqs': ssl.CERT_REQUIRED if rpc_opts['ca'] else None,
+        'ssl_version': getattr(ssl, rpc_opts['ssl_version'])
+    }
+    return {k: v for k, v in ssl_opts.items() if v}
+
+
+def _ws_url(host, rpc_opts):
+    """
+    Given a hostname and set of config options returned by _rpc_opts, return the
+    standard URL websocket endpoint for a Sideboard remote service.
+    """
+    return '{protocol}://{host}/wsrpc'.format(host=host, protocol='wss' if rpc_opts['ca'] else 'ws')
+
+
 def _register_rpc_services(rpc_services):
+    """
+    Sideboard has a config file, and it provides a parse_config method for its
+    plugins to parse their own config files.  In both cases, we check for the
+    presence of an [rpc_services] config section, which we use to register any
+    services defined there with our sideboard.lib.services API.  Note that this
+    means a server can provide information about a remote service in either the
+    main Sideboard config file OR the config file of any plugin.
+
+    This function takes the [rpc_services] config section from either Sideboard
+    itself or one of its plugins and registers all remote services found there.
+    """
     for service_name, host in rpc_services.items():
         if not isinstance(host, dict):
-            opts = {}
-            for setting in ['client_key', 'client_cert', 'ca']:
-                path = rpc_services.get(host, {}).get(setting, config[setting])
-                if path:
-                    assert os.path.exists(path), '{} config option set to path not found on the filesystem: {}'.format(setting, path)
+            rpc_opts = _rpc_opts(host, rpc_services.get(host, {}))
+            ssl_opts = _ssl_opts(rpc_opts)
 
-                _check(setting, path)
-                opts[setting] = path
+            jsonrpc_url = '{protocol}://{host}/jsonrpc'.format(host=host, protocol='https' if rpc_opts['ca'] else 'http')
+            jproxy = ServerProxy(jsonrpc_url, ssl_opts=ssl_opts, validate_cert_hostname=bool(rpc_opts['ca']))
+            jservice = getattr(jproxy, service_name)
+            if rpc_services.get(host, {}).get('jsonrpc_only'):
+                service = jservice
+            else:
+                service = services._register_websocket(_ws_url(host, rpc_opts), ssl_opts=ssl_opts, connect_immediately=False)
 
-                jsonrpc_url = '{protocol}://{host}/jsonrpc'.format(host=host, protocol='https' if opts['ca'] else 'http')
-                jproxy = ServerProxy(url, key_file=opts['client_key'], cert_file=opts['client_cert'],
-                                          ca_certs=opts['ca'], validate_cert_hostname=bool(opts['ca']))
-                jservice = getattr(jproxy, service_name)
-                if rpc_services.get(host, {}).get('jsonrpc_only'):
-                    service = jservice
-                else:
-                    ws_url = '{protocol}://{host}/wsprc'.format(host=host, protocol='wss' if opts['ca'] else 'ws')
-                    ssl_opts = {'key_file': opts['client_key'], 'cert_file': opts['client_cert'], 'ca_certs': opts['ca']}
-                    service = services._register_websocket(ws_url, ssl_opts={k: v for k, v in ssl_opts if v})
-
-            services.register(service, name, _jsonrpc=jservice, _override=True)
+            services.register(service, service_name, _jsonrpc=jservice, _override=True)
 
 _register_rpc_services(config['rpc_services'])
 
