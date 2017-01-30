@@ -1,0 +1,181 @@
+#!/bin/bash
+
+# chkconfig: - 88 14
+# description: Sideboard exit node manager
+# processname: sideboard
+#
+### BEGIN INIT INFO
+# Provides: sideboard
+# Required-Start: $local_fs $remote_fs $network $named
+# Required-Stop: $local_fs $remote_fs $network
+# Short-Description: start and stop sideboard
+# Description: Sideboard exit node manager
+### END INIT INFO
+
+RETVAL=0
+prog="sideboard"
+
+DESC=sideboard
+VENV=/opt/sideboard
+PYTHON=$VENV/bin/python
+SEP=$VENV/bin/sep
+CHERRYD=$VENV/bin/cherryd
+USER=sideboard
+PID_FILE=/var/run/sideboard/sideboard.pid
+COUNTDOWN=10
+
+SIDEBOARDMODE=server
+if [ -f /etc/sysconfig/sideboard ]; then
+    # import $SIDEBOARDMODE from defaults file
+.   /etc/sysconfig/sideboard
+fi
+
+OPTIONS="mainloop_daemon --pidfile=$PID_FILE"
+if [ "$SIDEBOARDMODE" == "server" ]; then
+    OPTIONS="-d --pidfile=$PID_FILE --import=sideboard.server"
+fi
+
+procgrep() {
+    grep "python.*${DESC}" | grep -v grep
+}
+
+filepid() {
+    cat $PID_FILE 2>/dev/null
+}
+
+procpid() {
+    ps aux | procgrep | awk '{print $2}'
+}
+
+allpids () {
+    FP=$(filepid)
+    PP=$(procpid)
+    if [ "$PP" == "$FP" ]; then
+        echo $PP
+    else
+        FP_IS_CORRECT_PROC=$(cat /proc/$FP/cmdline 2>/dev/null | procgrep)
+        if [ -n "$FP_IS_CORRECT_PROC" ]; then
+            echo $PP $FP
+        else
+            echo $PP
+        fi
+    fi
+}
+
+isrunning() {
+    if [ -n "$(filepid)" ]; then
+        RETVAL=0
+    elif [ -n "$(procpid)" ]; then
+        RETVAL=0
+    else
+        RETVAL=1
+    fi
+    return $RETVAL
+}
+
+start() {
+    if isrunning; then
+        echo "Starting $prog: $prog is already running [FAIL]"
+        RETVAL=1
+    else
+        echo -n $"Starting $prog: "
+        if [ "$SIDEBOARDMODE" == "server" ]; then
+            sudo -u $USER $CHERRYD $OPTIONS
+        else
+            sudo -u $USER $SEP $OPTIONS
+        fi
+        RETVAL=$?
+        if [ $RETVAL -eq 0 ]; then
+            echo '[OK]'
+        else
+            echo '[FAIL]'
+        fi
+    fi
+    return $RETVAL
+}
+
+exitcountdown() {
+    while [ "$COUNTDOWN" -gt 0 ]; do
+        if [ -z "$(procpid)" ]; then
+            break
+        fi
+        echo -n .
+        sleep 1
+        COUNTDOWN=`expr $COUNTDOWN - 1`
+    done
+}
+
+stop() {
+    if isrunning; then
+        echo -n "Shutting down $prog"
+        kill $(allpids) 2>/dev/null
+        exitcountdown
+        if [ -n "$(procpid)" ]; then
+            echo -n " $prog failed to exit cleanly, terminating"
+            kill -9 $(allpids) 2>/dev/null
+            COUNTDOWN=3
+            exitcountdown
+        fi
+        rm -f $PID_FILE
+        if isrunning; then
+            echo ' [FAIL]'
+        else
+            echo ' [OK]'
+        fi
+        RETVAL=0
+    else
+        echo "$prog is not running"
+        RETVAL=1
+    fi
+    return $RETVAL
+}
+
+restart() {
+    stop
+    start
+}
+
+condrestart() {
+    if isrunning; then
+        restart
+    fi
+}
+
+status() {
+    if isrunning; then
+        FP=$(filepid)
+        PP=$(procpid)
+        if [ "$FP" == "$PP" ]; then
+            RETVAL=0
+            echo "$prog is running with pid $PP"
+        else
+            RETVAL=1
+            echo "$prog has a pidfile with pid ${FP:-<EMPTY>} but a running process with pid ${PP:-<EMPTY>}"
+        fi
+    else
+        RETVAL=3
+        echo "$prog is not running"
+    fi
+    return $RETVAL
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    status)
+        status
+        ;;
+    restart)
+        restart
+        ;;
+    condrestart|try-restart)
+        condrestart
+        ;;
+    *)
+        echo $"Usage: $0 {start|stop|status|restart|condrestart}"
+        RETVAL=1
+esac

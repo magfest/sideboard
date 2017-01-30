@@ -1,7 +1,7 @@
 from __future__ import unicode_literals
 from sys import argv
 
-from sideboard.lib import _entry_points
+from sideboard.lib._utils import _entry_points
 
 
 def run_plugin_entry_point():

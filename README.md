@@ -1,4 +1,4 @@
-Sideboard [![Build Status](https://travis-ci.org/appliedsec/sideboard.svg)](https://travis-ci.org/appliedsec/sideboard)[![Coverage Status](https://coveralls.io/repos/appliedsec/sideboard/badge.png)](https://coveralls.io/r/appliedsec/sideboard)
+Sideboard [![Build Status](https://travis-ci.org/magfest/sideboard.svg)](https://travis-ci.org/magfest/sideboard)[![Coverage Status](https://coveralls.io/repos/magfest/sideboard/badge.png)](https://coveralls.io/r/magfest/sideboard)
 =========
 
 Getting Started

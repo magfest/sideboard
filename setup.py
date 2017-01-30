@@ -35,5 +35,8 @@ if __name__ == '__main__':
             'console_scripts': [
                 'sep = sideboard.sep:run_plugin_entry_point'
             ]
+        },
+        extras_require={
+            'perftrace': ['python-prctl>=1.6.1', 'psutil>=4.3.0']
         }
     )

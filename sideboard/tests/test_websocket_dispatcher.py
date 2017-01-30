@@ -5,11 +5,16 @@ import pytest
 from mock import Mock, ANY
 from ws4py.websocket import WebSocket
 
-from sideboard.lib import log, services, subscribes
+from sideboard.lib import log, services, subscribes, threadlocal
 from sideboard.websockets import WebSocketDispatcher, responder, threadlocal
 from sideboard.tests import service_patcher
 from sideboard.tests.test_websocket import ws
 
+
+@pytest.yield_fixture(autouse=True)
+def cleanup_threadlocal():
+    yield
+    threadlocal.reset()
 
 @pytest.fixture
 def wsd(monkeypatch):
@@ -124,7 +129,7 @@ def test_unsubscribe_from_nonexistent(wsd):
 def test_unsubscribe(wsd):
     client = 'client-1'
     wsd.client_locks[client] = 'lock'
-    wsd.cached_queries[client] = {None: (Mock(), (), {})}
+    wsd.cached_queries[client] = {None: (Mock(), (), {}, {})}
     wsd.cached_fingerprints[client] = 'fingerprint'
     WebSocketDispatcher.subscriptions['foo'] = {wsd: {client: 'subscription'}}
     wsd.unsubscribe(client)
@@ -135,7 +140,7 @@ def test_multi_unsubscribe(wsd):
     client = ['client-1', 'client-2']
     wsd.client_locks = {'client-1': 'lock', 'client-2': 'lock'}
     wsd.cached_fingerprints = {'client-1': 'fingerprint', 'client-2': 'fingerprint'}
-    wsd.cached_queries = {'client-1': {None: (Mock(), (), {})}, 'client-2': {None: (Mock(), (), {})}}
+    wsd.cached_queries = {'client-1': {None: (Mock(), (), {}, {})}, 'client-2': {None: (Mock(), (), {}, {})}}
     WebSocketDispatcher.subscriptions['foo'] = {wsd: {'client-1': 'subscription', 'client-2': 'subscription'}}
     wsd.unsubscribe(client)
     for d in [wsd.client_locks, wsd.cached_queries, wsd.cached_fingerprints, WebSocketDispatcher.subscriptions['foo']]:
@@ -152,7 +157,7 @@ def test_unsubscribe_all(wsd):
 def test_remote_unsubscribe(wsd, ws):
     ws.unsubscribe = Mock()
     threadlocal.reset(websocket=ws, message={'client': 'xxx'})
-    wsd.cached_queries['xxx'] = {None: (ws.make_caller('remote.foo'), (), {})}
+    wsd.cached_queries['xxx'] = {None: (ws.make_caller('remote.foo'), (), {}, {})}
     wsd.unsubscribe('xxx')
     ws.unsubscribe.assert_called_with('xxx')
 
@@ -183,9 +188,15 @@ def test_update_subscriptions_with_multiple_channels(wsd):
 
 @pytest.fixture
 def trig(wsd):
-    wsd.cached_queries['xxx']['yyy'] = (lambda *args, **kwargs: [args, kwargs], ('a', 'b'), {'c': 'd'})
+    wsd.cached_queries['xxx']['yyy'] = (lambda *args, **kwargs: [args, kwargs], ('a', 'b'), {'c': 'd'}, {})
     wsd.send = Mock()
     return wsd
+
+def increment():
+    count = threadlocal.client_data.setdefault('count', 0)
+    count += 1
+    threadlocal.client_data['count'] = count
+    return count
 
 def test_trigger(trig):
     trig.trigger(client='xxx', callback='yyy', trigger='zzz')
@@ -203,6 +214,15 @@ def test_trigger_without_known_callback(trig):
     trig.trigger(client='xxx', callback='doesNotExist')
     assert not trig.send.called
 
+def test_trigger_with_client_data(wsd, trig, monkeypatch):
+    client = 'client-1'
+    monkeypatch.setitem(wsd.subscriptions['foo'][wsd], client, [None])
+    monkeypatch.setitem(wsd.cached_fingerprints, client, {None: 'fingerprint'})
+    monkeypatch.setitem(wsd.cached_queries, client, {None: (increment, (), {}, {'count': 7})})
+
+    wsd.trigger(client=client, callback=None)
+    wsd.send.assert_called_with(client=client, callback=None, trigger=None, data=8)
+
 
 @pytest.fixture
 def up(wsd):
@@ -217,13 +237,13 @@ def foosub():
 def test_update_triggers_client_and_callback(up):
     up.update_triggers('xxx', 'yyy', foosub, ('a', 'b'), {'c': 'd'}, 'e', 123)
     up.update_subscriptions.assert_called_with('xxx', 'yyy', ['foo'])
-    assert up.cached_queries['xxx']['yyy'] == (foosub, ('a', 'b'), {'c': 'd'})
+    assert up.cached_queries['xxx']['yyy'] == (foosub, ('a', 'b'), {'c': 'd'}, {})
     assert not up.send.called
 
 def test_update_triggers_client_no_callback(up):
     up.update_triggers('xxx', None, foosub, ('a', 'b'), {'c': 'd'}, 'e', 123)
     up.update_subscriptions.assert_called_with('xxx', None, ['foo'])
-    assert up.cached_queries['xxx'][None] == (foosub, ('a', 'b'), {'c': 'd'})
+    assert up.cached_queries['xxx'][None] == (foosub, ('a', 'b'), {'c': 'd'}, {})
     up.send.assert_called_with(trigger='subscribe', client='xxx', data='e', _time=123)
 
 def test_update_triggers_no_client(up):
@@ -236,7 +256,7 @@ def test_update_triggers_no_client(up):
 def test_update_triggers_with_error(up):
     up.update_triggers('xxx', None, foosub, ('a', 'b'), {'c': 'd'}, up.NO_RESPONSE, 123)
     up.update_subscriptions.assert_called_with('xxx', None, ['foo'])
-    assert up.cached_queries['xxx'][None] == (foosub, ('a', 'b'), {'c': 'd'})
+    assert up.cached_queries['xxx'][None] == (foosub, ('a', 'b'), {'c': 'd'}, {})
     assert not up.send.called
 
 
