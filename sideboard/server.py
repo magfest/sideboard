@@ -16,7 +16,7 @@ default_auth_checker = auth_registry[config['default_authenticator']]['check']
 
 
 def reset_threadlocal():
-    threadlocal.reset(**{field: cherrypy.session.get('field') for field in config['ws.session_fields']})
+    threadlocal.reset(**{field: cherrypy.session.get(field) for field in config['ws.session_fields']})
 
 cherrypy.tools.reset_threadlocal = cherrypy.Tool('before_handler', reset_threadlocal, priority=51)
 
