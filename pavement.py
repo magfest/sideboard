@@ -77,6 +77,10 @@ def make_venv():
 
 def install_pip_requirements_in_dir(dir_of_requirements_txt):
     path_to_pip = __here__ / path('env/bin/pip')
+
+    print("---- installing dependencies in {} ----"
+        .format(dir_of_requirements_txt))
+
     sh('{pip} install -e {dir_of_requirements_txt}'
         .format(
             pip=path_to_pip,
