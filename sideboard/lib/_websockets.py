@@ -383,8 +383,10 @@ class WebSocket(object):
         client = sideboard.lib.threadlocal.get_client()
         originating_ws = sideboard.lib.threadlocal.get('websocket')
         if client and originating_ws:
-            sub = _Subscriber(method=method, src_client=client, dst_client=self._next_id('client'), src_ws=originating_ws, dest_ws=self)
-            originating_ws.passthru_subscriptions[client] = sub
+            sub = originating_ws.passthru_subscriptions.get(client)
+            if not sub:
+                sub = _Subscriber(method=method, src_client=client, dst_client=self._next_id('client'), src_ws=originating_ws, dest_ws=self)
+                originating_ws.passthru_subscriptions[client] = sub
             return sub
         else:
             return lambda *args, **kwargs: self.call(method, *args, **kwargs)
