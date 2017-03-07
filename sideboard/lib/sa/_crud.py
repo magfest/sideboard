@@ -163,17 +163,17 @@ from itertools import chain
 from functools import wraps
 
 import six
-from sqlalchemy import orm
+from sqlalchemy import orm, union, select, func
+from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm.attributes import InstrumentedAttribute
+from sqlalchemy.orm.exc import NoResultFound, MultipleResultsFound
 from sqlalchemy.orm.mapper import Mapper
-from sqlalchemy import union, select, func
+from sqlalchemy.orm.properties import ColumnProperty, RelationshipProperty
 from sqlalchemy.orm.util import class_mapper
 from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.sql import text, ClauseElement
-from sqlalchemy.orm.attributes import InstrumentedAttribute
-from sqlalchemy.orm.exc import NoResultFound, MultipleResultsFound
-from sqlalchemy.orm.properties import ColumnProperty, RelationshipProperty
-from sqlalchemy.types import Boolean, Text, Integer, String, UnicodeText, DateTime
 from sqlalchemy.sql.expression import alias, cast, label, bindparam, and_, or_, asc, desc, literal, text, union, join
+from sqlalchemy.types import Boolean, Text, Integer, String, UnicodeText, DateTime
 
 from sideboard.lib import log, notify, listify, threadlocal, serializer, is_listy, class_property
 
@@ -1270,8 +1270,13 @@ class CrudMixin(object):
         for name in collect_ancestor_attributes(cls, terminal_cls=cls.BaseClass):
             if not name.startswith('_') or name in cls.extra_defaults:
                 attr = getattr(cls, name)
-                if isinstance(attr, InstrumentedAttribute) and isinstance(attr.property, ColumnProperty) \
-                        or not isinstance(attr, (property, InstrumentedAttribute, ClauseElement)) and not callable(attr):
+
+                is_column_property = isinstance(attr, InstrumentedAttribute) and isinstance(attr.property, ColumnProperty)
+                is_hybrid_property = isinstance(getattr(attr, 'descriptor', None), hybrid_property)
+                is_property = isinstance(attr, (property, InstrumentedAttribute, ClauseElement))
+                is_callable = callable(attr)
+
+                if is_column_property or not (is_hybrid_property or is_property or is_callable):
                     attr_names.append(name)
         return attr_names
 
