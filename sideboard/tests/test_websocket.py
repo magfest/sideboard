@@ -180,6 +180,12 @@ def test_make_subscription_caller(ws, orig_ws):
     ws._send.assert_called_with(method='foo.bar', params=(1, 2), client=ANY)
 
 
+def test_make_updated_subscription_caller(ws, orig_ws):
+    threadlocal.reset(message={'client': 'xxx'}, websocket=orig_ws)
+    func = ws.make_caller('foo.bar')
+    assert func is ws.make_caller('foo.baz')
+
+
 def test_make_subscription_unsubscribe(ws, orig_ws):
     ws.unsubscribe = Mock()
     ws._next_id = Mock(return_value='xxx')
