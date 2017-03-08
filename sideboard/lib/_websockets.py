@@ -4,7 +4,7 @@ import sys
 import json
 from copy import deepcopy
 from itertools import count
-from threading import RLock
+from threading import RLock, Event
 from datetime import datetime, timedelta
 from collections import Mapping, MutableMapping
 
@@ -59,25 +59,28 @@ class _WebSocketClientDispatcher(WebSocketClient):
 
 
 class _Subscriber(object):
-    def __init__(self, method, client, src_ws, dest_ws):
-        self.src_ws, self.dest_ws, self.method, self.client = src_ws, dest_ws, method, client
+    def __init__(self, method, src_client, dst_client, src_ws, dest_ws):
+        self.method, self.src_ws, self.dest_ws, self.src_client, self.dst_client = method, src_ws, dest_ws, src_client, dst_client
 
     def unsubscribe(self):
-        self.dest_ws.unsubscribe(self.client)
+        self.dest_ws.unsubscribe(self.dst_client)
 
     def callback(self, data):
-        self.src_ws.send(data=data, client=self.client)
+        self.src_ws.send(data=data, client=self.src_client)
 
     def errback(self, error):
-        self.src_ws.send(error=error, client=self.client)
+        self.src_ws.send(error=error, client=self.src_client)
 
     def __call__(self, *args, **kwargs):
         self.dest_ws.subscribe({
-            'client': self.client,
+            'client': self.dst_client,
             'callback': self.callback,
             'errback': self.errback
         }, self.method, *args, **kwargs)
         return self.src_ws.NO_RESPONSE
+
+    def __del__(self):
+        self.unsubscribe()
 
 
 class WebSocket(object):
@@ -111,6 +114,17 @@ class WebSocket(object):
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
+
+    def preprocess(self, method, params):
+        """
+        Each message we send has its parameters passed to this function and
+        the actual parameters sent are whatever this function returns.  By
+        default this just returns the message unmodified, but plugins can
+        override this to add whatever logic is needed.  We pass the method
+        name in its full "service.method" form in case the logic depends on
+        the service being invoked.
+        """
+        return params
 
     @property
     def _should_reconnect(self):
@@ -285,7 +299,7 @@ class WebSocket(object):
             }
 
         paramback = self._callbacks[client].get('paramback')
-        params = paramback() if paramback else (args or kwargs)
+        params = self.preprocess(method, paramback() if paramback else (args or kwargs))
         self._callbacks[client].setdefault('errback', lambda result: log.error('{}(*{}, **{}) returned an error: {!r}', method, args, kwargs, result))
         self._callbacks[client].update({
             'method': method,
@@ -321,20 +335,23 @@ class WebSocket(object):
         kind was received.  The positional and keyword arguments to this method
         are used as the arguments to the rpc function call.
         """
+        finished = Event()
         result, error = [], []
         callback = self._next_id('callback')
         self._callbacks[callback] = {
-            'callback': result.append,
-            'errback': error.append
+            'callback': lambda response: (result.append(response), finished.set()),
+            'errback': lambda response: (error.append(response), finished.set())
         }
+        params = self.preprocess(method, args or kwargs)
         try:
-            self._send(method=method, params=args or kwargs, callback=callback)
+            self._send(method=method, params=params, callback=callback)
         except:
             self._callbacks.pop(callback, None)
             raise
 
-        for i in range(10 * config['ws.call_timeout']):
-            stopped.wait(0.1)
+        wait_until = datetime.now() + timedelta(seconds=config['ws.call_timeout'])
+        while datetime.now() < wait_until:
+            finished.wait(0.1)
             if stopped.is_set() or result or error:
                 break
         self._callbacks.pop(callback, None)
@@ -350,11 +367,27 @@ class WebSocket(object):
         >>> authenticate = ws.make_caller('auth.authenticate')
         >>> authenticate('username', 'password')
         True
+
+        Sideboard supports "passthrough subscriptions", e.g.
+        -> a browser makes a subscription for the "foo.bar" method
+        -> the server has "foo" registered as a remote service
+        -> the server creates its own subscription to "foo.bar" on the remote
+           service and passes all results back to the client as they arrive
+
+        This method implements that by checking whether it was called from a
+        thread with an active websocket as part of a subscription request.  If
+        so then in addition to returning a callable, it also registers the
+        new subscription with the client websocket so it can be cleaned up when
+        the client websocket closes and/or when its subscription is canceled.
         """
+        client = sideboard.lib.threadlocal.get_client()
         originating_ws = sideboard.lib.threadlocal.get('websocket')
-        client = sideboard.lib.threadlocal.get('message', {}).get('client')
         if client and originating_ws:
-            return _Subscriber(client=client, src_ws=originating_ws, dest_ws=self, method=method)
+            sub = originating_ws.passthru_subscriptions.get(client)
+            if not sub:
+                sub = _Subscriber(method=method, src_client=client, dst_client=self._next_id('client'), src_ws=originating_ws, dest_ws=self)
+                originating_ws.passthru_subscriptions[client] = sub
+            return sub
         else:
             return lambda *args, **kwargs: self.call(method, *args, **kwargs)
 
@@ -386,7 +419,7 @@ class Model(MutableMapping):
 
     @property
     def dirty(self):
-        return {k:v for k,v in self._data.items() if v != self._orig_data.get(k)}
+        return {k: v for k, v in self._data.items() if v != self._orig_data.get(k)}
 
     def to_dict(self):
         data = deepcopy(self._data)
@@ -465,10 +498,10 @@ class Subscription(object):
     ...     def __init__(self):
     ...         self.usernames = []
     ...         Subscription.__init__(self, 'admin.get_logged_in_users')
-    ...     
+    ...
     ...     def callback(self, users):
     ...         self.usernames = [user['username'] for user in users]
-    ... 
+    ...
     >>> users = UserList()
 
     The above code gives you a "users" object with a "usernames" attribute; when Sideboard
@@ -543,14 +576,14 @@ class MultiSubscription(object):
     ...     def __init__(self):
     ...         self.usernames = set()
     ...         MultiSubscription.__init__(self, ['host1', 'host2'], 'admin.get_logged_in_users')
-    ...     
+    ...
     ...     def callback(self, users, ws):
     ...         self.usernames.update(user['username'] for user in users)
-    ... 
+    ...
     >>> users = UserList()
 
     The above code gives you a "users" object with a "usernames" attribute; when Sideboard
-    starts, it opens websocket connections to 'host1' and 'host2', then subscribes to the 
+    starts, it opens websocket connections to 'host1' and 'host2', then subscribes to the
     "admin.get_logged_in_users" method and calls the "callback" method on every response.
     """
     def __init__(self, hostnames, rpc_method, *args, **kwargs):

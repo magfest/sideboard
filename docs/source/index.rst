@@ -305,18 +305,14 @@ So this sets us up to be able to change our index.html to be a template that use
             <title>Ragnarok Aggregation</title>
         </head>
         <body>
-            <h1>$(( apocalypse ))$</h1>
-            ((% for website, status in all_checks.items() %))
-                <h2>$(( website ))$ - $(( status.result ))$</h2>
-            ((% endfor %))
+            <h1>{{ apocalypse }}</h1>
+            {% for website, status in all_checks.items() %}
+                <h2>{{ website }} - {{ status.result }}</h2>
+            {% endfor %}
         </body>
     </html>
 
-So now we can go back to `<http://localhost:8282/ragnarok/>`_ and see a summary of our end-of-the-world checks.  A few things to note about our latest code:
-
-* We return a dictionary from our page handler; since the page handler is called ``index``, the dictionary it returns is used to render the ``index.html`` `jinja template <http://jinja.pocoo.org/>`_ in our configured templates directory
-
-* Notice that the jinja template tokens are not the default; they have been swapped out so that they do not conflict with `angular <http://angularjs.org/>`_ which is our Javascript framework of choice (Sideboard doesn't require you to use Angular but we highly recommend it!)
+So now we can go back to `<http://localhost:8282/ragnarok/>`_ and see a summary of our end-of-the-world checks.  One thing to note about this page handler is that it returns a dictionary.  Since the page handler is called ``index``, the dictionary it returns is used to render the ``index.html`` `jinja template <http://jinja.pocoo.org/>`_ in our configured templates directory.
 
 So let's make this extra-dynamic; we'll use websockets to subscribe to our service so that anytime our data changes, we'll automatically get an update.  We're using `Angular <http://angularjs.org/>`_ because Sideboard comes with some WebSocket helpers which are written with Angular.
 
@@ -372,7 +368,7 @@ Note that when you press the "Refresh" button the data gets automatically update
 
 Even without pressing the refresh button, the data on this page would still update every 24 hours since we defined that ``DaemonTask`` which calls ``check_for_apocalypse`` once per day.
 
-Since this is our only plugin, we'd probably like this webpage to be the defauly page for this Sideboard site, so let's open our plugin's ``sideboard/configspec.ini`` and add the following line:
+Since this is our only plugin, we'd probably like this webpage to be the default page for this Sideboard site, so let's open our plugin's ``sideboard/configspec.ini`` and add the following line:
 
 .. code-block:: none
 

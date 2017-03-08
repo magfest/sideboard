@@ -144,10 +144,37 @@ else:
 
 
 def declarative_base(klass):
-    class Mixed(klass, CrudMixin):
-        pass
+    """
+    Replacement for SQLAlchemy's declarative_base, which adds these features:
+    1) This is a decorator.
+    2) This allows your base class to set a constructor.
+    3) This provides a default constructor which automatically sets defaults
+       instead of waiting to do that until the object is committed.
+    4) Automatically setting __tablename__ to snake-case.
+    5) Automatic integration with the SessionManager class.
+    """
+    # SQLAlchemy doesn't expose its default constructor as a nicely importable function, so we grab it from the function defaults
+    if six.PY2:
+        spec_args, spec_varargs, spec_kwargs, spec_defaults = inspect.getargspec(declarative.declarative_base)
+    else:
+        declarative_spec = inspect.getfullargspec(declarative.declarative_base)
+        spec_args, spec_defaults = declarative_spec.args, declarative_spec.defaults
+    default_constructor = dict(zip(reversed(spec_args), reversed(spec_defaults)))['constructor']
 
-    constructor = {'constructor': klass.__init__} if '__init__' in klass.__dict__ else {}
+    class Mixed(klass, CrudMixin):
+        def __init__(self, *args, **kwargs):
+            """
+            Variant on SQLAlchemy model __init__ which sets default values on
+            initialization instead of immediately before the model is saved.
+            """
+            if '_model' in kwargs:
+                assert kwargs.pop('_model') == self.__class__.__name__
+            default_constructor(self, *args, **kwargs)
+            for attr, col in self.__table__.columns.items():
+                if col.default:
+                    self.__dict__.setdefault(attr, col.default.execute())
+
+    constructor = {'constructor': klass.__init__ if '__init__' in klass.__dict__ else Mixed.__init__}
     Mixed = declarative.declarative_base(cls=Mixed, **constructor)
     Mixed.BaseClass = _SessionInitializer._base_classes[klass.__module__] = Mixed
     Mixed.__tablename__ = declarative.declared_attr(lambda cls: _camelcase_to_underscore(cls.__name__))

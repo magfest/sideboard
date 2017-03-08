@@ -31,7 +31,7 @@ if __name__ == '__main__':
         include_package_data=True,
         package_data={pkg_name: []},
         zip_safe=False,
-        entry_points = {
+        entry_points={
             'console_scripts': [
                 'sep = sideboard.sep:run_plugin_entry_point'
             ]

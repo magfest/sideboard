@@ -10,8 +10,9 @@ import jinja2
 import cherrypy
 
 import sideboard.lib
-from sideboard.lib import log, config
+from sideboard.lib import log, config, serializer
 
+auth_registry = {}
 _startup_registry = defaultdict(list)
 _shutdown_registry = defaultdict(list)
 
@@ -46,7 +47,7 @@ def on_startup(func=None, priority=50):
     3) This function can be used as a decorator with a priority value, e.g.
         @on_startup(priority=25)
         def callback_function():
-            ...        
+            ...
     """
     if func:
         return _on_startup(func, priority)
@@ -117,11 +118,40 @@ def ajax(method):
     return to_json
 
 
-def renders_template(method, restricted=False):
+def restricted(x):
+    """
+    Decorator for CherryPy page handler methods.  This can either be called
+    to provide an authenticator ident or called directly as a decorator, e.g.
+
+        @restricted
+        def some_page(self): ...
+
+    is equivalent to
+
+        @restricted(sideboard.lib.config['default_authenticator'])
+        def some_page(self): ...
+    """
+    def make_decorator(ident):
+        def decorator(func):
+            @cherrypy.expose
+            @wraps(func)
+            def with_checking(*args, **kwargs):
+                if not auth_registry[ident]['check']():
+                    raise cherrypy.HTTPRedirect(auth_registry[ident]['login_path'])
+                else:
+                    return func(*args, **kwargs)
+            return with_checking
+        return decorator
+
+    if hasattr(x, '__call__'):
+        return make_decorator(config['default_authenticator'])(x)
+    else:
+        return make_decorator(x)
+
+
+def renders_template(method):
     """
     Decorator for CherryPy page handler methods implementing default behaviors:
-    - if your @render_with_templates class decorator used the "restricted"
-        argument, this redirects to /login if the user has not authenticated
     - if your page handler returns a string, return that un-modified
     - if your page handler returns a non-jsonrpc dictionary, render a template
         with that dictionary; the function my_page will render my_page.html
@@ -129,9 +159,6 @@ def renders_template(method, restricted=False):
     @cherrypy.expose
     @wraps(method)
     def renderer(self, *args, **kwargs):
-        if restricted and 'username' not in cherrypy.session:
-            raise cherrypy.HTTPRedirect('/login?return_to=' + quote(cherrypy.request.app.script_name))
-        
         output = method(self, *args, **kwargs)
         if isinstance(output, dict) and output.get('jsonrpc') != '2.0':
             return self.env.get_template(method.__name__ + '.html').render(**output)
@@ -150,31 +177,58 @@ def _guess_autoescape(template_name):
 
 class render_with_templates(object):
     """
-    Class decorator for CherryPy application objects with two optional arguments:
-    - template_dir: if present, this will cause all of your page handler methods
-        which return dictionaries to render Jinja templates found in this
-        directory using those dictionaries.  So if you have a page handler called
-        my_page which returns a dictionary, the template my_page.html in the
-        template_dir directory will be rendered with that dictionary.
-    - restricted: boolean which if True (this is False by default) will cause all
-        page handlers in this class to redirect to /login if the client has not
-        logged in already
+    Class decorator for CherryPy application objects which causes all of your page
+    handler methods which return dictionaries to render Jinja templates found in this
+    directory using those dictionaries.  So if you have a page handler called my_page
+    which returns a dictionary, the template my_page.html in the template_dir
+    directory will be rendered with that dictionary.  An "env" attribute gets added
+    to the class which is a Jinja environment.
+
+    For convenience, if the optional "restricted" parameter is passed, this class is
+    also passed through the @all_restricted class decorator.
     """
-    def __init__(self, template_dir=None, restricted=False):
+    def __init__(self, template_dir, restricted=False):
         self.template_dir, self.restricted = template_dir, restricted
 
     def __call__(self, klass):
-        if self.template_dir:
-            klass.env = jinja2.Environment(
-                autoescape=_guess_autoescape,
-                loader=jinja2.FileSystemLoader(self.template_dir),
-                block_start_string='((%',
-                block_end_string='%))',
-                variable_start_string='$((',
-                variable_end_string='))$',
-            )
-            klass.env.filters['jsonify'] = lambda x: klass.env.filters['safe'](json.dumps(x))
+        klass.env = jinja2.Environment(autoescape=_guess_autoescape, loader=jinja2.FileSystemLoader(self.template_dir))
+        klass.env.filters['jsonify'] = lambda x: klass.env.filters['safe'](json.dumps(x, cls=serializer))
+
+        if self.restricted:
+            all_restricted(self.restricted)(klass)
+
         for name, func in list(klass.__dict__.items()):
             if hasattr(func, '__call__'):
-                setattr(klass, name, renders_template(func, self.restricted))
+                setattr(klass, name, renders_template(func))
+
         return klass
+
+
+class all_restricted(object):
+    """Invokes the @restricted decorator on all methods of a class."""
+    def __init__(self, ident):
+        self.ident = ident
+        assert ident in auth_registry, '{!r} is not a recognized authenticator'.format(ident)
+
+    def __call__(self, klass):
+        for name, func in list(klass.__dict__.items()):
+            if hasattr(func, '__call__'):
+                setattr(klass, name, restricted(self.ident)(func))
+        return klass
+
+
+def register_authenticator(ident, login_path, checker):
+    """
+    Register a new authenticator, which consists of three things:
+    - A string ident, used to identify the authenticator in @restricted calls.
+    - The path to the login page we should redirect to when not authenticated.
+    - A function callable with no parameters which returns a truthy value if the
+      user is logged in and a falsey value if they are not.
+    """
+    assert ident not in auth_registry, '{} is already a registered authenticator'.format(ident)
+    auth_registry[ident] = {
+        'check': checker,
+        'login_path': login_path
+    }
+
+register_authenticator('default', '/login', lambda: 'username' in cherrypy.session)

@@ -8,10 +8,10 @@ class SideboardConfigurationTest(object):
     sideboard_root = os.path.abspath(os.path.join(__file__, '..', '..', '..'))
     dev_test_plugin_path = os.path.join(sideboard_root, 'plugins', 'configuration-test',
                                         'configuration_test', '__init__.py')
-    production_test_plugin_path = os.path.join('/', 'opt','sideboard','plugins','configuration-test',
-                                               'env','lib','python{py_version}','site-packages',
+    production_test_plugin_path = os.path.join('/', 'opt', 'sideboard', 'plugins', 'configuration-test',
+                                               'env', 'lib', 'python{py_version}', 'site-packages',
                                                'configuration_test-{plugin_ver}-{py_version}.egg',
-                                               'configuration_test','__init__.py')
+                                               'configuration_test', '__init__.py')
 
     def test_parse_config_adding_root_and_module_root_for_dev(self):
         test_config = parse_config(self.dev_test_plugin_path)
