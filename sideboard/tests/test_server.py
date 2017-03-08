@@ -425,7 +425,8 @@ class TestWebsocketCall(SideboardServerTest):
 class TestWebsocketsCrudSubscriptions(SideboardServerTest):
     @pytest.fixture(autouse=True)
     def override(self, service_patcher):
-        class MockCrud: pass
+        class MockCrud:
+            pass
         mr = self.mr = MockCrud()
         for name in ['create', 'update', 'delete']:
             setattr(mr, name, Session.crud.crud_notifies(self.make_crud_method(name), delay=0.5))

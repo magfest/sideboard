@@ -12,7 +12,7 @@ from sideboard.lib import config, services
 @pytest.fixture
 def service_patcher(request):
     class TestService(object):
-        def __init__(self, methods): 
+        def __init__(self, methods):
             self.__dict__.update(methods)
 
     def patch(name, service):
@@ -25,6 +25,7 @@ def service_patcher(request):
             request.addfinalizer(lambda: services.get_services().update({name: orig_service}))
     return patch
 
+
 @pytest.fixture
 def config_patcher(request):
     def patch_config(value, *path, **kwargs):
@@ -35,6 +36,7 @@ def config_patcher(request):
         request.addfinalizer(lambda: conf.__setitem__(path[-1], orig_val))
         conf[path[-1]] = value
     return patch_config
+
 
 def patch_session(Session, request):
     orig_engine, orig_factory = Session.engine, Session.session_factory

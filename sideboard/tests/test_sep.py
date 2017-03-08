@@ -43,6 +43,7 @@ class TestSep(object):
 
     def test_valid_entry_point(self):
         action = Mock()
+
         @entry_point
         def foobar():
             action(sys.argv)

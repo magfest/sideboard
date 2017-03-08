@@ -18,7 +18,7 @@ query = [{
     'comparison': <comparison_function>
     'field': <model_field_name>,
     'value': <model_field_value>
-}]+
+}]
 
 meaning an array of one or more dictionaries (a dictionary is equivalent to an array of length 1) of queries, one for each type of SQLAlchemy model object expected to be returned
 
@@ -202,10 +202,10 @@ def mappify(value):
 
 def generate_date_series(startDate=None, endDate=None, interval='1 month', granularity='day'):
     if granularity:
-        granularity = '1 %s'%granularity
+        granularity = '1 %s' % granularity
     else:
         granularity = '1 day'
-    
+
     generate_series = None
     if startDate:
         if endDate:
@@ -213,11 +213,11 @@ def generate_date_series(startDate=None, endDate=None, interval='1 month', granu
             generate_series = func.generate_series(startDate, endDate, granularity)
         elif interval:
             # If the startDate and the interval are defined then we use those
-            generate_series = func.generate_series(startDate, 
+            generate_series = func.generate_series(startDate,
                 text("DATE :start_date_param_1 + INTERVAL :interval_param_1",
                      bindparams=[
-                         bindparam("start_date_param_1",startDate), 
-                         bindparam("interval_param_1",interval)]),
+                         bindparam("start_date_param_1", startDate),
+                         bindparam("interval_param_1", interval)]),
                 granularity)
         else:
             # If ONLY the startDate is defined then we just use that
@@ -228,16 +228,16 @@ def generate_date_series(startDate=None, endDate=None, interval='1 month', granu
             generate_series = func.generate_series(
                  text("DATE :current_date_param_1 - INTERVAL :interval_param_1",
                      bindparams=[
-                         bindparam("current_date_param_1",endDate), 
-                         bindparam("interval_param_1",interval)]),
+                         bindparam("current_date_param_1", endDate),
+                         bindparam("interval_param_1", interval)]),
                  endDate, granularity)
         else:
             # If ONLY the endDate is defined then we just use that
             generate_series = func.generate_series(
                  text("DATE :current_date_param_1 - INTERVAL :interval_param_1",
                      bindparams=[
-                         bindparam("current_date_param_1",endDate), 
-                         bindparam("interval_param_1","1 month")]),
+                         bindparam("current_date_param_1", endDate),
+                         bindparam("interval_param_1", "1 month")]),
                  endDate, granularity)
     elif interval:
         # If ONLY the interval is defined then we default to the current date
@@ -245,18 +245,18 @@ def generate_date_series(startDate=None, endDate=None, interval='1 month', granu
         generate_series = func.generate_series(
              text("DATE :current_date_param_1 - INTERVAL :interval_param_1",
                  bindparams=[
-                     bindparam("current_date_param_1",datetime.utcnow()), 
-                     bindparam("interval_param_1",interval)]),
+                     bindparam("current_date_param_1", datetime.utcnow()),
+                     bindparam("interval_param_1", interval)]),
              datetime.utcnow(), granularity)
     else:
         # If NOTHING is defined then we return the query unmodified
         generate_series = func.generate_series(
              text("DATE :current_date_param_1 - INTERVAL :interval_param_1",
                  bindparams=[
-                     bindparam("current_date_param_1",datetime.utcnow()), 
-                     bindparam("interval_param_1","1 month")]),
+                     bindparam("current_date_param_1", datetime.utcnow()),
+                     bindparam("interval_param_1", "1 month")]),
              datetime.utcnow(), granularity)
-        
+
     return generate_series
 
 
@@ -266,45 +266,45 @@ def normalize_date_query(query, dateLabel, reportLabel, startDate=None, endDate=
         series.label(dateLabel),
         literal(0).label(reportLabel)
     ])
-    
+
     query = union(query, seriesQuery).alias()
     query = select([
-        text(dateLabel), 
+        text(dateLabel),
         func.max(text(reportLabel)).label(reportLabel)
     ], from_obj=query).group_by(dateLabel).order_by(dateLabel)
-    
+
     return query
 
 
 def normalize_object_graph(graph):
     """
     Returns a normalized object graph given a variety of different inputs.
-    
+
     If graph is a string, we assume it is a single property of an object,
     and return a dict with just that property set to True.
-    
+
     If graph is a dict, we assume it is already a normalized graph.
-    
+
     If graph is iterable (and not a string), we assume that it's simple a
-    list of properties, and we return a dict with those properties set to 
+    list of properties, and we return a dict with those properties set to
     True.
-    
+
     NOTE: This function is NOT recursive. It is intended to be repeatedly
     called from an external library as it traverses the object graph. We do
-    this for performance reasons in case the caller decides not to traverse 
+    this for performance reasons in case the caller decides not to traverse
     the entire graph.
-    
+
     >>> normalize_object_graph('prop')
     {u'prop': True}
-    
+
     >>> normalize_object_graph(['prop_one', 'prop_two'])
     {'prop_two': True, 'prop_one': True}
-    
+
     >>> normalize_object_graph({'prop_one':'test_one', 'prop_two':'test_two'})
     {u'prop_two': u'test_two', u'prop_one': u'test_one'}
     """
     if isinstance(graph, six.string_types):
-        return {graph:True}
+        return {graph: True}
     elif isinstance(graph, dict):
         return graph
     elif isinstance(graph, collections.Iterable):
@@ -315,21 +315,21 @@ def normalize_object_graph(graph):
 
 def collect_ancestor_classes(cls, terminal_cls=None, module=None):
     """
-    Collects all the classes in the inheritance hierarchy of the given class, 
+    Collects all the classes in the inheritance hierarchy of the given class,
     including the class itself.
-     
-    If module is an object or list, we only return classes that are in one 
-    of the given module/modules.This will exclude base classes that come 
+
+    If module is an object or list, we only return classes that are in one
+    of the given module/modules.This will exclude base classes that come
     from external libraries.
-    
-    If terminal_cls is encountered in the hierarchy, we stop ascending 
+
+    If terminal_cls is encountered in the hierarchy, we stop ascending
     the tree.
     """
     if terminal_cls is None:
         terminal_cls = []
     elif not isinstance(terminal_cls, (list, set, tuple)):
         terminal_cls = [terminal_cls]
-    
+
     if module is not None:
         if not isinstance(module, (list, set, tuple)):
             module = [module]
@@ -340,13 +340,13 @@ def collect_ancestor_classes(cls, terminal_cls=None, module=None):
             else:
                 module_strings.append(m.__name__)
         module = module_strings
-    
+
     ancestors = []
     if (module is None or cls.__module__ in module) and cls not in terminal_cls:
         ancestors.append(cls)
         for base in cls.__bases__:
             ancestors.extend(collect_ancestor_classes(base, terminal_cls, module))
-    
+
     return ancestors
 
 
@@ -372,11 +372,11 @@ def constrain_date_query(query, column, startDate=None, endDate=None, interval='
         elif interval:
             # If the startDate and the interval are defined then we use those
             query = query.where(and_(
-                column >= startDate, 
+                column >= startDate,
                 column <= text("DATE :start_date_param_1 + INTERVAL :interval_param_1",
                      bindparams=[
-                         bindparam("start_date_param_1",startDate), 
-                         bindparam("interval_param_1",interval)])))
+                         bindparam("start_date_param_1", startDate),
+                         bindparam("interval_param_1", interval)])))
             return query
         else:
             # If ONLY the startDate is defined then we just use that
@@ -386,11 +386,11 @@ def constrain_date_query(query, column, startDate=None, endDate=None, interval='
         if interval:
             # If the endDate and the interval are defined then we use those
             query = query.where(and_(
-                column <= endDate, 
+                column <= endDate,
                 column >= text("DATE :end_date_param_1 - INTERVAL :interval_param_1",
                      bindparams=[
-                         bindparam("end_date_param_1",endDate), 
-                         bindparam("interval_param_1",interval)])))
+                         bindparam("end_date_param_1", endDate),
+                         bindparam("interval_param_1", interval)])))
             return query
         else:
             # If ONLY the endDate is defined then we just use that
@@ -402,13 +402,13 @@ def constrain_date_query(query, column, startDate=None, endDate=None, interval='
         query = query.where(and_(
             column >= text("DATE :current_date_param_1 - INTERVAL :interval_param_1",
                  bindparams=[
-                     bindparam("current_date_param_1",datetime.utcnow()), 
-                     bindparam("interval_param_1",interval)])))
+                     bindparam("current_date_param_1", datetime.utcnow()),
+                     bindparam("interval_param_1", interval)])))
         return query
     else:
         # If NOTHING is defined then we return the query unmodified
         return query
-    
+
 
 def extract_sort_field(model, value):
     field = None
@@ -423,11 +423,11 @@ def extract_sort_field(model, value):
                 field = parts[1]
         else:
             field = f
-    
+
     if field and isinstance(field, six.string_types) and model:
         attr = getattr(model, field)
-        if (not (isinstance(attr, InstrumentedAttribute) and isinstance(attr.property, ColumnProperty)) and 
-            not isinstance(attr, ClauseElement)):
+        if (not (isinstance(attr, InstrumentedAttribute) and isinstance(attr.property, ColumnProperty)) and
+                not isinstance(attr, ClauseElement)):
             raise ValueError('SQLAlchemy model classes may only be sorted '
                              'by columns that exist in the database. '
                              'Provided: {}.{}'.format(model.__name__, field))
@@ -437,23 +437,23 @@ def extract_sort_field(model, value):
 def normalize_sort(model, sort):
     if sort and isinstance(sort, six.string_types) and (sort.lstrip()[0] == '[' or sort.lstrip()[0] == '{'):
         sort = json.loads(sort)
-    
+
     if isinstance(sort, six.string_types):
-        return [{'field':extract_sort_field(model, sort), 'dir':'asc'}]
+        return [{'field': extract_sort_field(model, sort), 'dir': 'asc'}]
     elif is_listy(sort):
         sorters = []
         for s in sort:
-            sorters.extend(normalize_sort(model, s)) 
+            sorters.extend(normalize_sort(model, s))
         return sorters
     elif isinstance(sort, dict):
         field = sort.get('property', sort.get('fields', sort.get('field', [])))
         direction = sort.get('direction', sort.get('dir', 'asc')).lower()
         return [{
-            'field':extract_sort_field(model, field), 
-            'dir':direction
+            'field': extract_sort_field(model, field),
+            'dir': direction
         }]
     else:
-        return [{'field':'id', 'dir':'asc'}]
+        return [{'field': 'id', 'dir': 'asc'}]
 
 
 def normalize_data(data, count=1):
@@ -462,15 +462,15 @@ def normalize_data(data, count=1):
     'attr'
     ['attr1', 'attr2']
     {'attr1':True, 'attr2':True}
-    
+
     A plural data must be specified as a list of lists or a list of dicts:
     [['attr1', 'attr2'], ['attr1', 'attr2']]
     [{'attr1':True, 'attr2':True}, {'attr1':True, 'attr2':True}]
-    
-    Note that if data is specified as a list of strings, it is 
-    considered to be singular. Only a list of lists or a list of 
+
+    Note that if data is specified as a list of strings, it is
+    considered to be singular. Only a list of lists or a list of
     dicts is considered plural.
-    
+
     Returns the plural form of data as the comprehensive form of a list of
     dictionaries mapping <keyname> to True, extended to count length. If a
     singular data is given, the result will be padded by repeating
@@ -503,7 +503,7 @@ def normalize_data(data, count=1):
         return listify_with_count(None, count)
     else:
         if isinstance(data, six.string_types):
-            data = [{data:True}]
+            data = [{data: True}]
         elif isinstance(data, collections.Mapping):
             data = [data]
         elif isinstance(data, collections.Iterable):
@@ -511,11 +511,11 @@ def normalize_data(data, count=1):
                 # this is the singular list of strings case, so wrap it and
                 # go from there
                 data = [data]
-            #is this a list of strings?
+            # is this a list of strings?
             data = [mappify(v) for v in data]
         else:
             raise TypeError('unknown datatype: {}', data)
-        
+
         if len(data) < count:
             if len(data) == 1:
                 data.extend([deepcopy(data[0]) for i in range(count - len(data))])
@@ -527,7 +527,7 @@ def normalize_data(data, count=1):
 def normalize_query(query, top_level=True, supermodel=None):
     """
     Normalizes a variety of query formats to a known standard query format.
-    
+
     The comprehensive form of the query parameter is as follows:
     {code:python}
     query = [{
@@ -544,13 +544,13 @@ def normalize_query(query, top_level=True, supermodel=None):
     """
     if query is None:
         raise ValueError('None passed for query parameter')
-    
+
     query = listify(deepcopy(query))
-    
+
     queries = []
     for q in query:
         if isinstance(q, six.string_types):
-            queries.append({'_model':q, '_label':q})
+            queries.append({'_model': q, '_label': q})
         elif isinstance(q, dict):
             if 'distinct' in q:
                 if isinstance(q['distinct'], six.string_types):
@@ -567,9 +567,9 @@ def normalize_query(query, top_level=True, supermodel=None):
                 q[op] = normalize_query(q[op], False, q.get('_model', supermodel))
                 if len(q[op]) == 1:
                     q = q[op][0]
-                elif not '_model' in q:
+                elif '_model' not in q:
                     # Pull the _model up from the sub clauses. Technically the
-                    # query format requires the _model be declared in the 
+                    # query format requires the _model be declared in the
                     # clause, but we are going to be liberal in what we accept.
                     model = supermodel
                     for clause in q[op]:
@@ -579,7 +579,7 @@ def normalize_query(query, top_level=True, supermodel=None):
                     if model is None:
                         raise ValueError('Clause objects must have a "_model" attribute')
                     q['_model'] = model
-            
+
             if '_model' in q:
                 queries.append(q)
             elif supermodel is not None:
@@ -627,7 +627,7 @@ def crud_exceptions(fn):
             return fn(*args, **kwargs)
         except:
             a = [x for x in (args or [])]
-            kw = {k : v for k, v in (kwargs or {}).items()}
+            kw = {k: v for k, v in (kwargs or {}).items()}
             log.error('Error calling {}.{} {!r} {!r}'.format(fn.__module__, fn.__name__, a, kw), exc_info=True)
             exc_class, exc, tb = sys.exc_info()
             raise six.reraise(CrudException, CrudException(str(exc)), tb)
@@ -640,6 +640,7 @@ def make_crud_service(Session):
         @staticmethod
         def crud_subscribes(func):
             func = crud_exceptions(func)
+
             class subscriber(object):
                 @property
                 def subscribes(self):
@@ -705,7 +706,7 @@ def make_crud_service(Session):
         def _sort_query(cls, query, model, sort):
             sort = normalize_sort(model, sort)
             for sorter in sort:
-                dir = {'asc':asc, 'desc':desc}[sorter['dir']]
+                dir = {'asc': asc, 'desc': desc}[sorter['dir']]
                 field = sorter['field']
                 if model:
                     field = getattr(model, field)
@@ -765,24 +766,24 @@ def make_crud_service(Session):
                 value = select([getattr(model_class, field)], cls._resolve_filters(value))
 
             return {
-                'eq': lambda field, val : field == val,
-                'ne': lambda field, val : field != val,
-                'lt': lambda field, val : field < val,
-                'le': lambda field, val : field <= val,
-                'gt': lambda field, val : field > val,
-                'ge': lambda field, val : field >= val,
-                'in': lambda field, val : field.in_(val),
-                'notin':lambda field, val : ~field.in_(val),
-                'isnull' : lambda field, val : field == None,
-                'isnotnull' : lambda field, val : field != None,
-                'contains': lambda field, val : field.like('%'+val+'%'),
-                'icontains': lambda field, val : field.ilike('%'+val+'%'),
-                'like': lambda field, val : field.like('%'+val+'%'),
-                'ilike': lambda field, val : field.ilike('%'+val+'%'),
-                'startswith': lambda field, val : field.startswith(val),
-                'endswith': lambda field, val : field.endswith(val),
-                'istartswith': lambda field, val : field.ilike(val+'%'),
-                'iendswith': lambda field, val : field.ilike('%'+val)
+                'eq': lambda field, val: field == val,
+                'ne': lambda field, val: field != val,
+                'lt': lambda field, val: field < val,
+                'le': lambda field, val: field <= val,
+                'gt': lambda field, val: field > val,
+                'ge': lambda field, val: field >= val,
+                'in': lambda field, val: field.in_(val),
+                'notin': lambda field, val: ~field.in_(val),
+                'isnull': lambda field, val: field == None,
+                'isnotnull': lambda field, val: field != None,
+                'contains': lambda field, val: field.like('%'+val+'%'),
+                'icontains': lambda field, val: field.ilike('%'+val+'%'),
+                'like': lambda field, val: field.like('%'+val+'%'),
+                'ilike': lambda field, val: field.ilike('%'+val+'%'),
+                'startswith': lambda field, val: field.startswith(val),
+                'endswith': lambda field, val: field.endswith(val),
+                'istartswith': lambda field, val: field.ilike(val+'%'),
+                'iendswith': lambda field, val: field.ilike('%'+val)
             }[comparison](column, value)
 
         @classmethod
@@ -882,7 +883,7 @@ def make_crud_service(Session):
 
             @param query: Specifies the model types to count. May be a string, a list
             of strings, or a list of dicts with a "_model" key specified.
-            @return: The count of each of the supplied model types, in a list of 
+            @return: The count of each of the supplied model types, in a list of
             dicts, like so:
             [{
                 '_model' : 'Player',
@@ -896,8 +897,8 @@ def make_crud_service(Session):
             with Session() as session:
                 for filter in filters:
                     model = Session.resolve_model(filter['_model'])
-                    result = {'_model' : filter['_model'], 
-                              '_label' : filter.get('_label', filter['_model'])}
+                    result = {'_model': filter['_model'],
+                              '_label': filter.get('_label', filter['_model'])}
                     if getattr(model, '_crud_perms', {}).get('read', True):
                         if filter.get('groupby', False):
                             columns = []
@@ -907,7 +908,7 @@ def make_crud_service(Session):
                             rows = Crud._filter_query(session.query(func.count(columns[0]), *columns), model, filter).all()
                             result['count'] = []
                             for row in rows:
-                                count = {'count' : row[0]}
+                                count = {'count': row[0]}
                                 index = 1
                                 for attr in filter['groupby']:
                                     count[attr] = row[index]
@@ -963,7 +964,7 @@ def make_crud_service(Session):
                         total = Crud._filter_query(session.query(model), model, filter).count()
                         results = Crud._filter_query(session.query(model), model, filter, limit, offset, order).all()
 
-                    return {'total':total, 'results':[r.crud_read(data[0]) for r in results]}
+                    return {'total': total, 'results': [r.crud_read(data[0]) for r in results]}
 
                 elif len(filters) > 1:
                     queries = []
@@ -986,7 +987,7 @@ def make_crud_service(Session):
                     query = queries[0].union(*(queries[1:]))
                     normalized_sort_fields = normalize_sort(None, order)
                     for sort_index, sort in enumerate(normalized_sort_fields):
-                        dir = {'asc':asc, 'desc':desc}[sort['dir']]
+                        dir = {'asc': asc, 'desc': desc}[sort['dir']]
                         sort_field = 'anon_sort_{}'.format(sort_index)
                         if issubclass(sort_field_types[sort_index], String):
                             sort_field = 'lower({})'.format(sort_field)
@@ -1015,9 +1016,9 @@ def make_crud_service(Session):
                             ordered_results[result_order[instance.id]] = instance
                     results = [r for r in ordered_results if r is not None]
 
-                    return {'total':total, 'results':[r.crud_read(data[query_index_table[r.id]]) for r in results]}
+                    return {'total': total, 'results': [r.crud_read(data[query_index_table[r.id]]) for r in results]}
                 else:
-                    return {'total':0, 'results':[]}
+                    return {'total': 0, 'results': []}
 
         @crud_notifies.__func__
         def create(data):
@@ -1105,7 +1106,7 @@ def make_crud_service(Session):
 class memoized(object):
     """
     Decorator. Caches a function's return value each time it is called.
-    If called later with the same arguments, the cached value is returned 
+    If called later with the same arguments, the cached value is returned
     (not reevaluated).
 
     from http://wiki.python.org/moin/PythonDecoratorLibrary#Memoize
@@ -1113,7 +1114,7 @@ class memoized(object):
     def __init__(self, func):
         self.func = func
         self.cache = {}
-        
+
     def __call__(self, *args):
         try:
             return self.cache[args]
@@ -1125,9 +1126,11 @@ class memoized(object):
             # uncachable -- for instance, passing a list as an argument.
             # Better to not cache than to blow up entirely.
             return self.func(*args)
+
     def __repr__(self):
         """Return the function's docstring."""
         return self.func.__doc__
+
     def __get__(self, obj, objtype):
         """Support instance methods."""
         return functools.partial(self.__call__, obj)
@@ -1217,7 +1220,7 @@ class CrudMixin(object):
         instance = None
         if id is not None:
             try:
-                instance = session.query(cls).filter(cls.id==id).first()
+                instance = session.query(cls).filter(cls.id == id).first()
             except:
                 log.error('Unable to fetch instance based on id value {!r}', value, exc_info=True)
                 raise TypeError('Invalid instance ID type for relation: {0.__name__} (value: {1})'.format(cls, value))
@@ -1323,7 +1326,7 @@ class CrudMixin(object):
                     obj[name] = cast_type(attr)
 
         return obj
-    
+
     def from_dict(self, attrs, validator=lambda self, name, val: True):
         relations = []
         # merge_relations modifies the dictionaries that are passed to it in
@@ -1338,13 +1341,13 @@ class CrudMixin(object):
                     relations.append((name, value))
                 else:
                     setattr(self, name, value)
-        
+
         def required(kv):
             cols = list(getattr(self.__class__, kv[0]).property.local_columns)
             return len(cols) != 1 or cols[0].primary_key or cols[0].nullable
-        relations.sort(key = required)
+        relations.sort(key=required)
 
-        for name,value in relations:
+        for name, value in relations:
             self._merge_relations(name, value, validator)
 
         return self
@@ -1381,8 +1384,8 @@ class CrudMixin(object):
 
     def _merge_relations(self, name, value, validator=lambda self, name, val: True):
         attr = getattr(self.__class__, name)
-        if (not isinstance(attr, InstrumentedAttribute) or 
-            not isinstance(attr.property, RelationshipProperty)):
+        if (not isinstance(attr, InstrumentedAttribute) or
+                not isinstance(attr.property, RelationshipProperty)):
             return
 
         session = orm.Session.object_session(self)
@@ -1407,7 +1410,7 @@ class CrudMixin(object):
             for i in value:
                 if backref_id_name is not None and isinstance(i, dict) and not i.get(backref_id_name):
                     i[backref_id_name] = self.id
-                relation_inst = relation_cls._create_or_fetch(session, i, **{backref_id_name:self.id} if backref_id_name else {})
+                relation_inst = relation_cls._create_or_fetch(session, i, **{backref_id_name: self.id} if backref_id_name else {})
                 if isinstance(i, dict):
                     relation_inst.from_dict(i, _crud_write_validator if relation_inst._sa_instance_state.identity else _crud_create_validator)
                 new_insts.append(relation_inst)
@@ -1614,10 +1617,10 @@ class crudable(object):
             type: "<type>"
         }
     }
-    
-    @cvar never_read: a tuple of attribute names that default to being 
+
+    @cvar never_read: a tuple of attribute names that default to being
         not readable
-    @cvar never_update: a tuple of attribute names that default to being 
+    @cvar never_update: a tuple of attribute names that default to being
         not updatable
     @cvar always_create: a tuple of attribute names that default to being
         always creatable
@@ -1625,12 +1628,12 @@ class crudable(object):
         to simplify setting the same label for each and every instance of an
         attribute name
     """
-    
+
     never_read = ('metadata',)
     never_update = ('id',)
     always_create = ('id',)
     default_labels = {'addr': 'Address'}    # TODO: allow plugins to define this; Sideboard core is not the place to encode addr/Address
-    
+
     def __init__(self, can_create=True,
                  create=None, no_create=None,
                  read=None, no_read=None,
@@ -1703,7 +1706,7 @@ class crudable(object):
                 the value to be used in validation (e.g. 1000, for a max value
                 of 1000). This is intended to support client side validation
         """
-        
+
         self.can_create = can_create
         self.can_delete = can_delete
         if no_update is not None and create is None:
@@ -1714,37 +1717,37 @@ class crudable(object):
         self.no_update = no_update or [x for x in self.no_read if x not in self.update]
         self.create = create or []
         self.no_create = no_create or [x for x in self.no_update if x not in self.create]
-        
+
         self.no_read.extend(self.never_read)
         self.no_update.extend(self.never_update)
-        
+
         self.data_spec = data_spec or {}
-    
+
     def __call__(self, cls):
         def _get_crud_perms(cls):
             if getattr(cls, '_cached_crud_perms', False):
                 return cls._cached_crud_perms
-            
+
             crud_perms = {
-                'can_create' : self.can_create,
-                'can_delete' : self.can_delete,
-                'read' : [],
-                'update' : [],
-                'create' : []
+                'can_create': self.can_create,
+                'can_delete': self.can_delete,
+                'read': [],
+                'update': [],
+                'create': []
             }
-            
+
             read = self.read
             for name in collect_ancestor_attributes(cls):
                 if not name.startswith('_'):
                     attr = getattr(cls, name)
                     if (isinstance(attr, (InstrumentedAttribute, property, ClauseElement)) or
-                        isinstance(attr, (int, float, bool, datetime, date, time, six.binary_type, six.text_type, uuid.UUID))):
+                            isinstance(attr, (int, float, bool, datetime, date, time, six.binary_type, six.text_type, uuid.UUID))):
                         read.append(name)
             read = list(set(read))
             for name in read:
                 if not self.no_read or name not in self.no_read:
                     crud_perms['read'].append(name)
-            
+
             update = self.update + deepcopy(crud_perms['read'])
             update = list(set(update))
             for name in update:
@@ -1755,11 +1758,11 @@ class crudable(object):
                         attr = getattr(cls, name)
                         if isinstance(attr, property) and getattr(attr, 'fset', False):
                             crud_perms['update'].append(name)
-                        elif (isinstance(attr, InstrumentedAttribute) and 
+                        elif (isinstance(attr, InstrumentedAttribute) and
                               isinstance(attr.property, RelationshipProperty) and
                               attr.property.viewonly != True):
                             crud_perms['update'].append(name)
-            
+
             create = self.create + deepcopy(crud_perms['update'])
             for name in self.always_create:
                 create.append(name)
@@ -1769,17 +1772,17 @@ class crudable(object):
             for name in create:
                 if not self.no_create or name not in self.no_create:
                     crud_perms['create'].append(name)
-            
+
             cls._cached_crud_perms = crud_perms
             return cls._cached_crud_perms
-        
+
         def _get_crud_spec(cls):
             if getattr(cls, '_cached_crud_spec', False):
                 return cls._cached_crud_spec
-            
+
             crud_perms = cls._crud_perms
-            
-            field_names = list(set(crud_perms['read']) | set(crud_perms['update']) | 
+
+            field_names = list(set(crud_perms['read']) | set(crud_perms['update']) |
                                set(crud_perms['create']) | set(self.data_spec.keys()))
             fields = {}
             for name in field_names:
@@ -1787,9 +1790,9 @@ class crudable(object):
                 # be serialized as json, it's convenient to have it in that
                 # form early
 
-                # if using different validation decorators or in the data spec 
-                # causes multiple spec 
-                # kwargs to be specified, we're going to error here for 
+                # if using different validation decorators or in the data spec
+                # causes multiple spec
+                # kwargs to be specified, we're going to error here for
                 # duplicate keys in dictionaries. Since we don't want to allow
                 # two different expected values for maxLength being sent in a
                 # crud spec for example
@@ -1799,10 +1802,10 @@ class crudable(object):
                     for crud_validator_dict in getattr(cls, '_validators', {}).get(name, [])
                     for spec_key_name, spec_value in crud_validator_dict.get('spec_kwargs', {}).items()
                 }
-                
+
                 if field_validator_kwargs:
                     self.data_spec.setdefault(name, {})
-                    # manually specified crud validator keyword arguments 
+                    # manually specified crud validator keyword arguments
                     # overwrite the decorator-supplied keyword arguments
                     field_validator_kwargs.update(self.data_spec[name].get('validators', {}))
                     self.data_spec[name]['validators'] = field_validator_kwargs
@@ -1818,20 +1821,20 @@ class crudable(object):
                     # data_spec argument
                     fields[name] = field
                     continue
-                
+
                 field['read'] = name in crud_perms['read']
                 field['update'] = name in crud_perms['update']
                 field['create'] = name in crud_perms['create']
-                
+
                 if field['read'] or field['update'] or field['create']:
                     fields[name] = field
                 elif name in fields:
                     del fields[name]
                     continue
-                
+
                 if 'desc' not in field and not _isdata(attr):
                     # no des specified, and there's a relevant docstring, so use it
-        
+
                     # if there's 2 consecutive newlines, assume that there's a
                     # separator in the docstring and that the top part only
                     # is the description, if there's not, use the whole thing.
@@ -1841,7 +1844,7 @@ class crudable(object):
                     if doc:
                         doc = doc.partition('\n\n')[0].replace('\n', ' ').strip()
                         field['desc'] = doc
-            
+
                 if 'type' not in field:
                     if isinstance(attr, InstrumentedAttribute) and isinstance(attr.property, ColumnProperty):
                         field['type'] = cls._type_map.get(type(attr.property.columns[0].type), 'auto')
@@ -1858,7 +1861,7 @@ class crudable(object):
                             field['defaultValue'] = attr
                 if isinstance(attr, InstrumentedAttribute) and isinstance(attr.property, RelationshipProperty):
                     field['_model'] = attr.property.mapper.class_.__name__
-            
+
             crud_spec = {'fields': fields}
             cls._cached_crud_spec = crud_spec
             return cls._cached_crud_spec
@@ -1901,7 +1904,7 @@ class crud_validation(object):
         else:
             # in case we subclass something with a _validators attribute
             cls._validators = deepcopy(cls._validators)
-        
+
         cls._validators.setdefault(self.attribute_name, []).append({
             'model_validator': self.model_validator,
             'validator_message': self.validator_message,
@@ -1924,13 +1927,13 @@ class text_length_validation(crud_validation):
                         max_length is None or text_length <= max_length])
 
         kwargs = {}
-        if not min_length is None:
+        if min_length is not None:
             kwargs['minLength'] = min_length
-            if not max_text is None:
+            if max_text is not None:
                 kwargs['minLengthText'] = min_text
-        if not max_length is None:
+        if max_length is not None:
             kwargs['maxLength'] = max_length
-            if not max_text is None:
+            if max_text is not None:
                 kwargs['maxLengthText'] = max_text
 
         message = 'Length of value should be between {} and {} (inclusive; None means no min/max).'.format(min_length, max_length)
