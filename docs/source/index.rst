@@ -1031,7 +1031,7 @@ When we refer to "Sideboard starting" and "Sideboard stopping" we are referring 
 
 .. class:: TimeDelayQueue()
 
-    Subclass of `Queue.Queue <http://docs.python.org/2/library/queue.html#Queue.Queue>`_ which adds an optional ``delay`` parameter to the ``put`` method which does not add the item to the queue until after the specified amount of time.  This is used internally but is included in our public API in case it's useful to anyone else.
+    Subclass of `Queue.Queue <http://docs.python.org/2/library/queue.html#Queue.Queue>`_ which adds an optional ``delay`` parameter to the ``put`` method which does not add the item to the queue until after the specified amount of time.  This is included in our public API in case it's useful, though Sideboard itself no longer makes use of it as part of its internal implementation.
 
     .. method:: put(item[, block=True[, timeout=None[, delay=0]]]):
     
@@ -1043,8 +1043,7 @@ When we refer to "Sideboard starting" and "Sideboard stopping" we are referring 
     Utility class allowing code to call the provided function in a separate pool of threads.  For example, if you need to call a long-running function in the handler for an HTTP request, you might want to just kick off the method in a background thread so that you can return from the page handler immediately.
     
     >>> caller = Caller(long_running_func)
-    >>> caller.defer('arg1', arg2=True)        # called immediately (in another thread)
-    >>> caller.delay(5, 'argOne', arg2=False)  # called after a 5 second delay (in another thread)
+    >>> caller.defer('arg1', arg2=True)  # triggers an immediate call in another thread
 
     :param func: the function to be executed in the background; this must be callable with no arguments
     :param threads: the number of threads which will call this function; sometimes you may want a pool of threads all calling the same function

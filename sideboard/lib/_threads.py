@@ -160,7 +160,7 @@ class TimeDelayQueue(Queue):
 
 class Caller(DaemonTask):
     def __init__(self, func, interval=0, threads=1, name=None):
-        self.q = TimeDelayQueue()
+        self.q = Queue()
         DaemonTask.__init__(self, self.call, interval=interval, threads=threads, name=name or func.__name__)
         self.callee = func
 
@@ -171,25 +171,14 @@ class Caller(DaemonTask):
         except Empty:
             pass
 
-    def start(self):
-        self.q.task.start()
-        DaemonTask.start(self)
-
-    def stop(self):
-        self.q.task.stop()
-        DaemonTask.stop(self)
-
     def defer(self, *args, **kwargs):
         self.q.put([args, kwargs])
-
-    def delayed(self, delay, *args, **kwargs):
-        self.q.put([args, kwargs], delay=delay)
 
 
 class GenericCaller(DaemonTask):
     def __init__(self, interval=0, threads=1, name=None):
         DaemonTask.__init__(self, self.call, interval=interval, threads=threads, name=name)
-        self.q = TimeDelayQueue()
+        self.q = Queue()
 
     def call(self):
         try:
@@ -198,19 +187,8 @@ class GenericCaller(DaemonTask):
         except Empty:
             pass
 
-    def start(self):
-        self.q.task.start()
-        DaemonTask.start(self)
-
-    def stop(self):
-        self.q.task.stop()
-        DaemonTask.stop(self)
-
     def defer(self, func, *args, **kwargs):
         self.q.put([func, args, kwargs])
-
-    def delayed(self, delay, func, *args, **kwargs):
-        self.q.put([func, args, kwargs], delay=delay)
 
 
 def _get_thread_current_stacktrace(thread_stack, thread):
