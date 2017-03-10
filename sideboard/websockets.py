@@ -191,6 +191,7 @@ def trigger_delayed_notifications():
         for channels, context in threadlocal.get(DELAYED_NOTIFICATIONS_KEY):
             broadcaster.defer(channels, **context)
             local_broadcaster.defer(channels, **context)
+        threadlocal.set(DELAYED_NOTIFICATIONS_KEY, [])
 
 
 def notifies(*args, **kwargs):
