@@ -13,6 +13,20 @@ class ConfigurationError(RuntimeError):
     pass
 
 
+def get_config_root():
+    """
+    Returns the configuration root for the system, which defaults to '/etc/sideboard'.
+    If the SIDEBOARD_CONFIG_ROOT environment variable is set, its contents will be returned instead.
+    """
+    default_root = '/etc/sideboard'
+    config_root = os.environ.get('SIDEBOARD_CONFIG_ROOT', default_root)
+    if config_root != default_root and not os.path.isdir(config_root):
+        raise AssertionError('cannot find {!r} directory'.format(config_root))
+    elif os.path.isdir(config_root) and not os.access(config_root, os.R_OK):
+        raise AssertionError('{!r} directory is not readable'.format(config_root))
+    return config_root
+
+
 def get_dirnames(pyname, plugin):
     """
     Sideboard and its plugins often want to find other files.  Sometimes they
@@ -69,6 +83,7 @@ def get_config_files(requesting_file_path, plugin):
     plugin: boolean indicating whether config is being parsed for a plugin or
             for Sideboard itself, since this affects which filenames we return
     """
+    config_root = get_config_root()
     module_dir, root_dir = get_dirnames(requesting_file_path, plugin)
     module_name = os.path.basename(module_dir)
     default_file_paths = ('development-defaults.ini', 'development.ini')
@@ -76,12 +91,12 @@ def get_config_files(requesting_file_path, plugin):
     if 'SIDEBOARD_MODULE_TESTING' in os.environ:
         extra_configs = []
     elif plugin:
-        extra_configs = ['/etc/sideboard/plugins.d/{}.cfg'.format(module_name.replace('_', '-'))]
+        extra_configs = [os.path.join(config_root, 'plugins.d', '{}.cfg'.format(module_name.replace('_', '-')))]
     else:
         assert module_name == 'sideboard', 'Unexpected module name {!r} requesting "non-plugin" configuration files'.format(module_name)
         extra_configs = [
-            os.path.join('/etc', 'sideboard', 'sideboard-core.cfg'),
-            os.path.join('/etc', 'sideboard', 'sideboard-server.cfg'),
+            os.path.join(config_root, 'sideboard-core.cfg'),
+            os.path.join(config_root, 'sideboard-server.cfg'),
         ]
 
     return [os.path.join(root_dir, default_path) for default_path in default_file_paths] + extra_configs

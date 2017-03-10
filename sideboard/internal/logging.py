@@ -4,7 +4,7 @@ import logging.config
 
 import logging_unterpolation
 
-from sideboard.config import config
+from sideboard.config import config, get_config_root
 
 
 class IndentMultilinesLogFormatter(logging.Formatter):
@@ -21,7 +21,7 @@ class IndentMultilinesLogFormatter(logging.Formatter):
 
 def _configure_logging():
     logging_unterpolation.patch_logging()
-    fname = '/etc/sideboard/logging.cfg'
+    fname = os.path.join(get_config_root(), 'logging.cfg')
     if os.path.exists(fname):
         logging.config.fileConfig(fname, disable_existing_loggers=True)
     else:
