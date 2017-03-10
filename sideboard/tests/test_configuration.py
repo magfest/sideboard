@@ -1,7 +1,10 @@
 from __future__ import unicode_literals
 import os
 
-from sideboard.config import parse_config
+import pytest
+from mock import Mock
+
+from sideboard.config import parse_config, get_config_root
 
 
 class SideboardConfigurationTest(object):
@@ -28,3 +31,43 @@ class SideboardConfigurationTest(object):
             expected_root = os.path.join('/', 'opt', 'sideboard', 'plugins', 'configuration-test')
             assert test_config.get('module_root') == expected_module_root
             assert test_config.get('root') == expected_root
+
+
+class TestSideboardConfigRoot(object):
+    @pytest.fixture
+    def dir_missing(self, monkeypatch):
+        monkeypatch.setattr(os.path, 'isdir', Mock(return_value=False))
+
+    @pytest.fixture
+    def dir_exists(self, monkeypatch):
+        monkeypatch.setattr(os.path, 'isdir', Mock(return_value=True))
+
+    @pytest.fixture
+    def dir_readable(self, monkeypatch):
+        monkeypatch.setattr(os, 'access', Mock(return_value=True))
+
+    @pytest.fixture
+    def dir_unreadable(self, monkeypatch):
+        monkeypatch.setattr(os, 'access', Mock(return_value=False))
+
+    @pytest.fixture
+    def custom_root(self, monkeypatch):
+        monkeypatch.setitem(os.environ, 'SIDEBOARD_CONFIG_ROOT', '/custom/location')
+
+    def test_valid_etc_sideboard(self, dir_exists, dir_readable):
+        assert get_config_root() == '/etc/sideboard'
+
+    def test_no_etc_sideboard(self, dir_missing):
+        assert get_config_root() == '/etc/sideboard'
+
+    def test_etc_sideboard_unreadable(self, dir_exists, dir_unreadable):
+        pytest.raises(AssertionError, get_config_root)
+
+    def test_overridden_missing(self, custom_root, dir_missing):
+        pytest.raises(AssertionError, get_config_root)
+
+    def test_overridden_unreadable(self, custom_root, dir_exists, dir_unreadable):
+        pytest.raises(AssertionError, get_config_root)
+
+    def test_overridden_valid(self, custom_root, dir_exists, dir_readable):
+        assert get_config_root() == '/custom/location'

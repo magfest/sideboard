@@ -18,8 +18,12 @@ def get_config_root():
     Returns the configuration root for the system, which defaults to '/etc/sideboard'.
     If the SIDEBOARD_CONFIG_ROOT environment variable is set, its contents will be returned instead.
     """
-    config_root = os.environ.get('SIDEBOARD_CONFIG_ROOT', '/etc/sideboard')
-    assert os.path.isdir(config_root) and os.access(config_root, os.R_OK), '{!r} directory is not readable'.format(config_root)
+    default_root = '/etc/sideboard'
+    config_root = os.environ.get('SIDEBOARD_CONFIG_ROOT', default_root)
+    if config_root != default_root and not os.path.isdir(config_root):
+        raise AssertionError('cannot find {!r} directory'.format(config_root))
+    elif os.path.isdir(config_root) and not os.access(config_root, os.R_OK):
+        raise AssertionError('{!r} directory is not readable'.format(config_root))
     return config_root
 
 
