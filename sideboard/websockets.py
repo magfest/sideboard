@@ -376,6 +376,9 @@ class WebSocketDispatcher(WebSocket):
             meaningful) and /wsrpc being client-cert protected (so the username
             will always be 'rpc').
 
+        header_fields: We copy header fields from the request that initiated the
+            websocket connection.
+
         cached_queries and cached_fingerprints: When we receive a subscription
             update, Sideboard re-runs all of the subscription methods to see if
             new data needs to be pushed out.  We do this by storing all of the
@@ -407,6 +410,7 @@ class WebSocketDispatcher(WebSocket):
         self.client_locks = defaultdict(RLock)
         self.cached_queries, self.cached_fingerprints = defaultdict(dict), defaultdict(dict)
         self.session_fields = self.check_authentication()
+        self.header_fields = {field: cherrypy.request.headers.get(field) for field in config['ws.header_fields']}
 
     @classmethod
     def check_authentication(cls):
@@ -605,7 +609,7 @@ class WebSocketDispatcher(WebSocket):
         """
         if callback in self.cached_queries[client]:
             function, args, kwargs, client_data = self.cached_queries[client][callback]
-            threadlocal.reset(websocket=self, client_data=client_data, **self.session_fields)
+            threadlocal.reset(websocket=self, client_data=client_data, headers=self.header_fields, **self.session_fields)
             result = function(*args, **kwargs)
             self.send(trigger=trigger, client=client, callback=callback, data=result)
 
@@ -661,7 +665,7 @@ class WebSocketDispatcher(WebSocket):
         """
         before = time.time()
         duration, result = None, None
-        threadlocal.reset(websocket=self, message=message, **self.session_fields)
+        threadlocal.reset(websocket=self, message=message, headers=self.header_fields, **self.session_fields)
         action, callback, client, method = message.get('action'), message.get('callback'), message.get('client'), message.get('method')
         try:
             with self.client_lock(client):
