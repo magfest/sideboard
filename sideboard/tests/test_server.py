@@ -22,14 +22,15 @@ from sideboard.tests import service_patcher, config_patcher, get_available_port
 from sideboard.tests.test_sa import Session
 
 
-available_port = get_available_port()
+if config['cherrypy']['server.socket_port'] == 0:
+    available_port = get_available_port()
 
-# The config is updated in two places because by the time this code is
-# executed, cherrypy.config will already be populated with the values from
-# our config file. The configuration will already be living in two places,
-# each of which must be updated.
-config['cherrypy']['server.socket_port'] = available_port
-cherrypy.config.update({'server.socket_port': available_port})
+    # The config is updated in two places because by the time this code is
+    # executed, cherrypy.config will already be populated with the values from
+    # our config file. The configuration will already be living in two places,
+    # each of which must be updated.
+    config['cherrypy']['server.socket_port'] = available_port
+    cherrypy.config.update({'server.socket_port': available_port})
 
 
 @pytest.mark.functional
