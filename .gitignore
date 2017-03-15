@@ -10,6 +10,7 @@ dist/
 *.pyc
 *.pyo
 development.ini
+test.ini
 sideboard/docs
 plugins/*
 !plugins/conftest.py
