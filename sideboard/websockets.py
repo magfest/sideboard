@@ -410,7 +410,16 @@ class WebSocketDispatcher(WebSocket):
         self.client_locks = defaultdict(RLock)
         self.cached_queries, self.cached_fingerprints = defaultdict(dict), defaultdict(dict)
         self.session_fields = self.check_authentication()
-        self.header_fields = {field: cherrypy.request.headers.get(field) for field in config['ws.header_fields']}
+        self.header_fields = self.fetch_headers()
+
+    @classmethod
+    def fetch_headers(cls):
+        """
+        This method returns a dict with all of the header fields we want to
+        store for this websocket so that we can set them as threadlocal global
+        variables for all subsequent websocket RPC requests.
+        """
+        return {field: cherrypy.request.headers.get(field) for field in config['ws.header_fields']}
 
     @classmethod
     def check_authentication(cls):
