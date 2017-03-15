@@ -9,6 +9,7 @@ from sideboard.config import get_config_files, get_config_overrides, \
 
 
 def test_uniquify():
+    pytest.raises(AssertionError, uniquify, None)
     assert [] == uniquify([])
     assert ['a', 'b', 'c'] == uniquify(['a', 'b', 'c'])
     assert ['a', 'b', 'c', 'd', 'e'] == uniquify(['a', 'b', 'a', 'c', 'a', 'd', 'a', 'e'])
@@ -19,7 +20,19 @@ def test_uniquify():
     'SIDEBOARD_CONFIG_OVERRIDES' not in os.environ,
     reason='SIDEBOARD_CONFIG_OVERRIDES not set')
 def test_test_defaults_ini():
+    """
+    Verify that the tests were launched using `test-defaults.ini`.
+
+    All of the other sideboard tests will succeed whether `test-defaults.ini`
+    or `development-defaults.ini` is used. This test is actually a functional
+    test of sorts; it verifies the test suite itself was launched with
+    `SIDEBOARD_CONFIG_OVERRIDES="test-defaults.ini"`.
+
+    The test is skipped rather than failing if the tests were launched without
+    setting `SIDEBOARD_CONFIG_OVERRIDES`.
+    """
     from sideboard.lib import config
+    # is_test_running is ONLY set in test-defaults.ini
     assert config.get('is_test_running')
 
 
@@ -60,14 +73,14 @@ class TestSideboardGetConfigFiles(object):
 
     @pytest.fixture
     def plugin_dirs(self):
-        module_path = '/opt/sideboard/plugins/test_plugin/test_plugin'
-        root_path = os.path.join(os.getcwd(), 'plugins', 'test_plugin')
+        module_path = '/fake/sideboard/plugins/test-plugin/test_plugin'
+        root_path = os.path.join(os.getcwd(), 'plugins', 'test-plugin')
         return (module_path, root_path)
 
     @pytest.fixture
     def sideboard_dirs(self):
-        module_path = '/opt/sideboard/sideboard'
-        root_path = '/opt/sideboard'
+        module_path = '/fake/sideboard/sideboard'
+        root_path = '/fake/sideboard'
         return (module_path, root_path)
 
     def test_get_module_and_root_dirs_plugin(self, plugin_dirs):
