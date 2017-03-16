@@ -21,6 +21,7 @@ from sideboard.lib import log, class_property, Caller
 from sideboard.config import config
 
 local_subscriptions = defaultdict(list)
+DELAYED_NOTIFICATIONS_KEY = 'sideboard.delayed_notifications'
 
 
 class threadlocal(object):
@@ -152,13 +153,16 @@ def _normalize_channels(*channels):
     return list(set(normalized_channels))
 
 
-def notify(channels, trigger="manual", delay=0, originating_client=None):
+def notify(channels, trigger="manual", delay=False, originating_client=None):
     """
     Manually trigger all subscriptions on the given channels.  The following
     optional parameters may be specified:
 
     trigger: Used in log messages if you want to distinguish between triggers.
-    delay: If provided, wait this many seconds before triggering the broadcast.
+    delay: Boolean indicating whether the notification should happen immediately
+           or after the current WebSocket RPC method has completed.  Note that
+           if this parameter is set when notify is called outside of a WebSocket
+           RPC request, no notification will ever happen.
     originating_client: Websocket subscriptions will NOT fire if they have the
                         same client as the trigger.
     """
@@ -167,8 +171,27 @@ def notify(channels, trigger="manual", delay=0, originating_client=None):
         'trigger': trigger,
         'originating_client': originating_client or threadlocal.get_client()
     }
-    broadcaster.delayed(delay, channels, **context)
-    local_broadcaster.delayed(delay, channels, **context)
+    if delay:
+        threadlocal.setdefault(DELAYED_NOTIFICATIONS_KEY, []).append([channels, context])
+    else:
+        broadcaster.defer(channels, **context)
+        local_broadcaster.defer(channels, **context)
+
+
+def trigger_delayed_notifications():
+    """
+    Sometimes plugins might want to call notify() and have it trigger after
+    their RPC method has completed its call.  For example, a plugin might call
+    notify() in the middle of a database transaction and want the notification
+    to happen after a commit has occurred.  When notify() is called with
+    delay=True then it appends to a list, and this method goes through that list
+    and triggers broadcasts for those notifications.
+    """
+    if threadlocal.get(DELAYED_NOTIFICATIONS_KEY):
+        for channels, context in threadlocal.get(DELAYED_NOTIFICATIONS_KEY):
+            broadcaster.defer(channels, **context)
+            local_broadcaster.defer(channels, **context)
+        threadlocal.set(DELAYED_NOTIFICATIONS_KEY, [])
 
 
 def notifies(*args, **kwargs):
@@ -188,7 +211,6 @@ def notifies(*args, **kwargs):
     >>> getattr(fn_dict, 'notifies')
     ['dict']
     """
-    delay = kwargs.pop("delay", 0)
     channels = _normalize_channels(*args)
 
     def decorated_func(func):
@@ -197,7 +219,7 @@ def notifies(*args, **kwargs):
             try:
                 return func(*args, **kwargs)
             finally:
-                notify(channels, trigger=func.__name__, delay=delay)
+                notify(channels, trigger=func.__name__)
 
         notifier_func.notifies = channels
         return notifier_func
@@ -687,6 +709,7 @@ class WebSocketDispatcher(WebSocket):
                         result = func(*args, **kwargs)
                         duration = (time.time() - before) if config['debug'] else None
                     finally:
+                        trigger_delayed_notifications()
                         self.update_triggers(client, callback, func, args, kwargs, result, duration)
         except:
             log.error('unexpected websocket dispatch error', exc_info=True)
