@@ -5,7 +5,6 @@ from uuid import uuid4
 from time import sleep
 from random import randrange
 from unittest import TestCase
-from contextlib import closing
 
 import six
 from six.moves.queue import Queue, Empty
@@ -19,8 +18,19 @@ from ws4py.server.cherrypyserver import WebSocketPlugin
 
 import sideboard.websockets
 from sideboard.lib import log, config, subscribes, notifies, notify, services, cached_property, WebSocket
-from sideboard.tests import service_patcher, config_patcher
+from sideboard.tests import service_patcher, config_patcher, get_available_port
 from sideboard.tests.test_sa import Session
+
+
+if config['cherrypy']['server.socket_port'] == 0:
+    available_port = get_available_port()
+
+    # The config is updated in two places because by the time this code is
+    # executed, cherrypy.config will already be populated with the values from
+    # our config file. The configuration will already be living in two places,
+    # each of which must be updated.
+    config['cherrypy']['server.socket_port'] = available_port
+    cherrypy.config.update({'server.socket_port': available_port})
 
 
 @pytest.mark.functional
@@ -30,12 +40,6 @@ class SideboardServerTest(TestCase):
     jsonrpc = ServerProxy(jsonrpc_url)
 
     rsess_username = 'unit_tests'
-
-    @staticmethod
-    def assert_port_open(port):
-        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.bind(('0.0.0.0', port))
 
     @staticmethod
     def assert_can_connect_to_localhost(port):
@@ -62,7 +66,6 @@ class SideboardServerTest(TestCase):
         cherrypy.tree.apps.pop('/mock_login', None)
         cherrypy.tree.mount(Root(), '/mock_login')
 
-        cls.assert_port_open(cls.port)
         cherrypy.config.update({'engine.autoreload_on': False})
         cherrypy.engine.start()
         cherrypy.engine.wait(cherrypy.engine.states.STARTED)

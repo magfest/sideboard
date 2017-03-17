@@ -6,9 +6,11 @@ from datetime import datetime
 import pytest
 
 import sqlalchemy
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 from sqlalchemy.types import Boolean, Integer, UnicodeText
 from sqlalchemy.schema import Column, ForeignKey, UniqueConstraint
+from sqlalchemy.sql import case
 
 from sideboard.lib import log, listify
 from sideboard.tests import patch_session
@@ -110,6 +112,18 @@ class CrudableClass(CrudableMixin, Base):
     @settable_property.setter
     def settable_property(self, thing):
         pass
+
+    @hybrid_property
+    def string_and_int_hybrid_property(self):
+        """this is the docstring"""
+        return '{} {}'.format(self.string_model_attr, self.int_model_attr)
+
+    @string_and_int_hybrid_property.expression
+    def string_and_int_hybrid_property(cls):
+        return case([
+            (cls.string_model_attr == None, ''),
+            (cls.int_model_attr == None, '')
+        ], else_=(cls.string_model_attr + ' ' + cls.int_model_attr))
 
     @property
     def unsettable_property(self):
@@ -337,6 +351,22 @@ class TestCrudRead(object):
         assert len(expected) == actual['total']
         assert sorted(expected, key=lambda m: m.get('id', m.get('_model'))) \
             == sorted(actual['results'], key=lambda m: m.get('id', m.get('_model')))
+
+    def test_to_dict_default_attrs(self):
+        expected = [
+            'bool_attr',
+            'bool_model_attr',
+            'date_attr',
+            'extra_data',
+            'float_attr',
+            'id',
+            'int_attr',
+            'int_model_attr',
+            'mixed_in_attr',
+            'string_attr',
+            'string_model_attr']
+        actual = CrudableClass.to_dict_default_attrs
+        assert sorted(expected) == sorted(actual)
 
     def test_subquery(self):
         results = Session.crud.read({

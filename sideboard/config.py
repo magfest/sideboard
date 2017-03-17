@@ -1,7 +1,9 @@
 from __future__ import unicode_literals
 import os
+import re
 
 from os import unlink
+from collections import Sized, Iterable, Mapping
 from copy import deepcopy
 from tempfile import NamedTemporaryFile
 
@@ -9,22 +11,86 @@ import configobj
 from validate import Validator
 
 
+def uniquify(xs):
+    """
+    Returns an order-preserved copy of `xs` with duplicate items removed.
+
+    >>> uniquify(['a', 'z', 'a', 'b', 'a', 'y', 'a', 'c', 'a', 'x'])
+    ['a', 'z', 'b', 'y', 'c', 'x']
+
+    """
+    is_listy = isinstance(xs, Sized) \
+               and isinstance(xs, Iterable) \
+               and not isinstance(xs, (Mapping, type(b''), type('')))
+    assert is_listy, 'uniquify requires a listy argument'
+
+    seen = set()
+    return [x for x in xs if x not in seen and not seen.add(x)]
+
+
 class ConfigurationError(RuntimeError):
     pass
 
 
+def get_config_overrides():
+    """
+    Returns a list of config file paths used to override the default config.
+
+    The SIDEBOARD_CONFIG_OVERRIDES environment variable may be set to a
+    semicolon separated list of absolute and/or relative paths. If the
+    SIDEBOARD_CONFIG_OVERRIDES is set, this function returns a list of its
+    contents, split on semicolons::
+
+        # SIDEBOARD_CONFIG_OVERRIDES='/absolute/config.ini;relative/config.ini'
+        return ['/absolute/config.ini', 'relative/config.ini']
+
+    If any of the paths listed in SIDEBOARD_CONFIG_OVERRIDES ends with the
+    suffix "<FILENAME>-defaults.<EXT>" then a similarly named path
+    "<FILENAME>.<EXT>" will also be included::
+
+        # SIDEBOARD_CONFIG_OVERRIDES='test-defaults.ini'
+        return ['test-defaults.ini', 'test.ini']
+
+    If the SIDEBOARD_CONFIG_OVERRIDES environment variable is NOT set, this
+    function returns a list with two relative paths::
+
+        return ['development-defaults.ini', 'development.ini']
+    """
+    config_overrides = os.environ.get(
+        'SIDEBOARD_CONFIG_OVERRIDES',
+        'development-defaults.ini')
+
+    defaults_re = re.compile(r'(.+)-defaults(\.\w+)$')
+    config_paths = []
+    for config_path in uniquify([s.strip() for s in config_overrides.split(';')]):
+        config_paths.append(config_path)
+        m = defaults_re.match(config_path)
+        if m:
+            config_paths.append(m.group(1) + m.group(2))
+
+    return config_paths
+
+
 def get_config_root():
     """
-    Returns the configuration root for the system, which defaults to '/etc/sideboard'.
-    If the SIDEBOARD_CONFIG_ROOT environment variable is set, its contents will be returned instead.
+    Returns the config root for the system, defaults to '/etc/sideboard'.
+
+    If the SIDEBOARD_CONFIG_ROOT environment variable is set, its contents
+    will be returned instead.
     """
-    config_root = os.environ.get('SIDEBOARD_CONFIG_ROOT', '/etc/sideboard')
-    assert os.path.isdir(config_root) and os.access(config_root, os.R_OK), '{!r} directory is not readable'.format(config_root)
+    default_root = '/etc/sideboard'
+    config_root = os.environ.get('SIDEBOARD_CONFIG_ROOT', default_root)
+    if config_root != default_root and not os.path.isdir(config_root):
+        raise AssertionError('cannot find {!r} directory'.format(config_root))
+    elif os.path.isdir(config_root) and not os.access(config_root, os.R_OK):
+        raise AssertionError('{!r} directory is not readable'.format(config_root))
     return config_root
 
 
-def get_dirnames(pyname, plugin):
+def get_module_and_root_dirs(requesting_file_path, is_plugin):
     """
+    Returns the "module_root" and "root" directories for the given file path.
+
     Sideboard and its plugins often want to find other files.  Sometimes they
     need files which ship as part of the module itself, and for those they need
     to know the module directory.  Other times they might need files which are
@@ -34,36 +100,69 @@ def get_dirnames(pyname, plugin):
     package under the configured "plugins_dir" directory.
 
     These two directories are also automatically inserted into plugin config
-    files as "root" and "module_root" and are available for interpolation.  For
-    example, a plugin could have a line in their config file like
+    files as "root" and "module_root" and are available for interpolation. For
+    example, a plugin could have a line in their config file like::
+
         template_dir = "%(module_root)s/templates"
+
     and that would be interpolated to the correct absolute path.
 
-    This function takes two parameters:
-    pyname: the __file__ of the module needing to know these directories
-    plugin: boolean indicating whether this is a plugin or Sideboard itself
+    Args:
+        requesting_file_path (str): The __file__ of the module requesting the
+            "root" and "module_root" directories.
+        is_plugin (bool): Indicates whether a plugin is making the request or
+            Sideboard itself is making the request.
+
+    Returns:
+        tuple(str): The "module_root" and "root" directories for the
+            given module.
     """
-    module_dir = os.path.dirname(os.path.abspath(pyname))
-    if plugin:
+    module_dir = os.path.dirname(os.path.abspath(requesting_file_path))
+    if is_plugin:
         from sideboard.lib import config
         plugin_name = os.path.basename(module_dir)
-        root_dir = os.path.join(config['plugins_dir'], plugin_name.replace('_', '-'))
+        root_dir = os.path.join(config['plugins_dir'], plugin_name)
+        if '_' in plugin_name and not os.path.exists(root_dir):
+            root_dir = os.path.join(config['plugins_dir'], plugin_name.replace('_', '-'))
     else:
         root_dir = os.path.realpath(os.path.join(module_dir, '..'))
     return module_dir, root_dir
 
 
-def get_config_files(requesting_file_path, plugin):
+def get_config_files(requesting_file_path, is_plugin):
     """
-    Returns a list of absolute paths to config files to be parsed by ConfigObj,
-    which allows subsequent files to override values in earlier files.  We parse
-    the following files in this order:
-    -> development-defaults.ini, which can be checked into source control and
-        include whatever we want to be present in a development environment
-    -> development.ini, which shouldn't be checked into source control, allowing
-        a developer to include local settings not shared with others
-    -> /etc/sideboard/plugins.d/<PLUGIN_NAME>.cfg, which is the config file we
-        expect in production; the others shouldn't exist on a real install
+    Returns a list of absolute paths to config files for the given file path.
+
+    When the returned config files are parsed by ConfigObj each subsequent
+    file will override values in earlier files.
+
+    If `is_plugin` is `True` the first of the returned files is:
+
+    * /etc/sideboard/plugins.d/<PLUGIN_NAME>.cfg, which is the config file we
+      expect in production
+
+
+    If `is_plugin` is `False` the first two returned files are:
+
+    * /etc/sideboard/sideboard-core.cfg, which is the sideboard core config
+      file we expect in production
+
+    * /etc/sideboard/sideboard-server.cfg, which is the sideboard server config
+      file we expect in production
+
+
+    The rest of the files returned are as follows, though we wouldn't
+    necessarily expect these to exist on a production install (these are
+    controlled by SIDEBOARD_CONFIG_OVERRIDES):
+
+    * <PROJECT_DIR>/development-defaults.ini, which can be checked into source
+      control and include whatever we want to be present in a development
+      environment.
+
+    * <PROJECT_DIR>/development.ini, which shouldn't be checked into source
+      control, allowing a developer to include local settings not shared with
+      others.
+
 
     When developing on a machine with an installed production config file, we
     might want to ignore the "real" config file and limit ourselves to only the
@@ -73,50 +172,60 @@ def get_config_files(requesting_file_path, plugin):
     order to facilitate testing modules which rely on Sideboard but which are
     not themselves Sideboard plugins.)
 
-    This function takes the following parameters:
-    requesting_file_path: the Python __file__ of the module which is parsing its
-                          config; used to locate development config files
-    plugin: boolean indicating whether config is being parsed for a plugin or
-            for Sideboard itself, since this affects which filenames we return
+    Args:
+        requesting_file_path (str): The Python __file__ of the module
+            requesting its config files.
+        is_plugin (bool): Indicates whether a plugin is making the request or
+            Sideboard itself is making the request, since this affects which
+            config files we return.
+
+    Returns:
+        list(str): List of absolute paths to config files for the given module.
     """
     config_root = get_config_root()
-    module_dir, root_dir = get_dirnames(requesting_file_path, plugin)
+    module_dir, root_dir = get_module_and_root_dirs(requesting_file_path, is_plugin)
     module_name = os.path.basename(module_dir)
-    default_file_paths = ('development-defaults.ini', 'development.ini')
 
     if 'SIDEBOARD_MODULE_TESTING' in os.environ:
-        extra_configs = []
-    elif plugin:
-        extra_configs = [os.path.join(config_root, 'plugins.d', '{}.cfg'.format(module_name.replace('_', '-')))]
+        base_configs = []
+    elif is_plugin:
+        base_configs = [os.path.join(config_root, 'plugins.d', '{}.cfg'.format(module_name.replace('_', '-')))]
     else:
         assert module_name == 'sideboard', 'Unexpected module name {!r} requesting "non-plugin" configuration files'.format(module_name)
-        extra_configs = [
+        base_configs = [
             os.path.join(config_root, 'sideboard-core.cfg'),
-            os.path.join(config_root, 'sideboard-server.cfg'),
+            os.path.join(config_root, 'sideboard-server.cfg')
         ]
 
-    return [os.path.join(root_dir, default_path) for default_path in default_file_paths] + extra_configs
+    config_overrides = [os.path.join(root_dir, config_path) for config_path in get_config_overrides()]
+    return base_configs + config_overrides
 
 
-def parse_config(requesting_file_path, plugin=True):
+def parse_config(requesting_file_path, is_plugin=True):
     """
-    parse the configuration files for a given sideboard module (or the sideboard server itself). It's
-    expected that this function is called from one of the files in the top-level of your module
-    (typically the __init__.py file)
+    Parse the config files for a given sideboard plugin, or sideboard itself.
 
-    :param requesting_file_path: the path of the file requesting a parsed config file. An example
-        value is:
-        ~/sideboard/plugins/plugin_nickname/plugin_module_name/__init__.py
-        the containing directory (here, 'plugin_module_name') is assumed to be the module name of
-        the plugin that is requesting a parsed config.
-    :type requesting_file_path: binary or unicode string
-    :param plugin: if True (default) add plugin-relevant information to the returning config. Also,
-        treat it as if it's a plugin
-    :type plugin: bool
-    :return: the resulting configuration object
-    :rtype: ConfigObj
+    It's expected that this function is called from one of the files in the
+    top-level of your module (typically the __init__.py file)
+
+    Args:
+        requesting_file_path (str): The __file__ of the module requesting the
+            parsed config file. An example value is::
+
+                /opt/sideboard/plugins/plugin-package-name/plugin_module_name/__init__.py
+
+            the containing directory (here, `plugin_module_name`) is assumed
+            to be the module name of the plugin that is requesting a parsed
+            config.
+        is_plugin (bool): Indicates whether a plugin is making the request or
+            Sideboard itself is making the request. If True (default) add
+            plugin-relevant information to the returned config. Also, treat it
+            as if it's a plugin
+
+    Returns:
+        ConfigObj: The resulting configuration object.
     """
-    module_dir, root_dir = get_dirnames(requesting_file_path, plugin)
+    module_dir, root_dir = get_module_and_root_dirs(requesting_file_path, is_plugin)
 
     specfile = os.path.join(module_dir, 'configspec.ini')
     spec = configobj.ConfigObj(specfile, interpolation=False, list_values=False, encoding='utf-8', _inspec=True)
@@ -125,7 +234,7 @@ def parse_config(requesting_file_path, plugin=True):
     root_conf = ['root = "{}"\n'.format(root_dir), 'module_root = "{}"\n'.format(module_dir)]
     temp_config = configobj.ConfigObj(root_conf, interpolation=False, encoding='utf-8')
 
-    for config_path in get_config_files(requesting_file_path, plugin):
+    for config_path in get_config_files(requesting_file_path, is_plugin):
         # this gracefully handles nonexistent files
         temp_config.merge(configobj.ConfigObj(config_path, encoding='utf-8', interpolation=False))
 
@@ -144,7 +253,7 @@ def parse_config(requesting_file_path, plugin=True):
             configobj.flatten_errors(config, validation))
         )
 
-    if plugin:
+    if is_plugin:
         sideboard_config = globals()['config']
         config['plugins'] = deepcopy(sideboard_config['plugins'])
         if 'rpc_services' in config:
@@ -158,4 +267,4 @@ def parse_config(requesting_file_path, plugin=True):
 
     return config
 
-config = parse_config(__file__, plugin=False)
+config = parse_config(__file__, is_plugin=False)
