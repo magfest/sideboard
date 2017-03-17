@@ -1,7 +1,7 @@
 configobj>=5.0.5
-cherrypy==8.9.1
+cherrypy>=3.6.0,<9.0
 ws4py>=0.3.2
-SQLAlchemy>=1.0.0
+SQLAlchemy>=1.1.0
 six>=1.5.2
 Jinja2>=2.6
 rpctools>=0.3.1

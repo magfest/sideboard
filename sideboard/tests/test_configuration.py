@@ -4,6 +4,7 @@ import os
 import pytest
 from mock import Mock
 
+from sideboard.lib import config
 from sideboard.config import get_config_files, get_config_overrides, \
     get_config_root, get_module_and_root_dirs, parse_config, uniquify
 
@@ -74,7 +75,7 @@ class TestSideboardGetConfigFiles(object):
     @pytest.fixture
     def plugin_dirs(self):
         module_path = '/fake/sideboard/plugins/test-plugin/test_plugin'
-        root_path = os.path.join(os.getcwd(), 'plugins', 'test-plugin')
+        root_path = os.path.join(config['plugins_dir'], 'test-plugin')
         return (module_path, root_path)
 
     @pytest.fixture
@@ -91,8 +92,7 @@ class TestSideboardGetConfigFiles(object):
         assert sideboard_dirs == get_module_and_root_dirs(
             os.path.join(sideboard_dirs[0], 'config.py'), is_plugin=False)
 
-    def test_get_config_files_plugin(
-        self, plugin_dirs, config_overrides_unset):
+    def test_get_config_files_plugin(self, plugin_dirs, config_overrides_unset):
 
         expected = [
             '/etc/sideboard/plugins.d/test-plugin.cfg',
@@ -101,8 +101,7 @@ class TestSideboardGetConfigFiles(object):
         assert expected == get_config_files(
             os.path.join(plugin_dirs[0], 'config.py'), is_plugin=True)
 
-    def test_get_config_files_sideboard(
-        self, sideboard_dirs, config_overrides_unset):
+    def test_get_config_files_sideboard(self, sideboard_dirs, config_overrides_unset):
 
         expected = [
             '/etc/sideboard/sideboard-core.cfg',
@@ -112,8 +111,7 @@ class TestSideboardGetConfigFiles(object):
         assert expected == get_config_files(
             os.path.join(sideboard_dirs[0], 'config.py'), is_plugin=False)
 
-    def test_get_config_files_plugin_with_overrides(
-        self, plugin_dirs, config_overrides_set):
+    def test_get_config_files_plugin_with_overrides(self, plugin_dirs, config_overrides_set):
 
         expected = [
             '/etc/sideboard/plugins.d/test-plugin.cfg',
@@ -122,8 +120,7 @@ class TestSideboardGetConfigFiles(object):
         assert expected == get_config_files(
             os.path.join(plugin_dirs[0], 'config.py'), is_plugin=True)
 
-    def test_get_config_files_sideboard_with_overrides(
-        self, sideboard_dirs, config_overrides_set):
+    def test_get_config_files_sideboard_with_overrides(self, sideboard_dirs, config_overrides_set):
 
         expected = [
             '/etc/sideboard/sideboard-core.cfg',
