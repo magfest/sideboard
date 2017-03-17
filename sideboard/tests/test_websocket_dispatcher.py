@@ -12,6 +12,7 @@ from sideboard.tests import service_patcher
 from sideboard.tests.test_websocket import ws
 
 mock_session_data = {'username': 'mock_user', 'user_id': 'mock_id'}
+mock_header_data = {'REMOTE_USER': 'mock_user', 'REMOTE_USER_ID': 'mock_id'}
 
 
 @pytest.yield_fixture(autouse=True)
@@ -26,6 +27,7 @@ def wsd(monkeypatch):
     monkeypatch.setattr(WebSocket, 'closed', Mock())
     monkeypatch.setattr(WebSocketDispatcher, 'is_closed', False)
     monkeypatch.setattr(WebSocketDispatcher, 'check_authentication', lambda cls: mock_session_data)
+    monkeypatch.setattr(WebSocketDispatcher, 'fetch_headers', lambda cls: mock_header_data)
     return WebSocketDispatcher(None)
 
 
@@ -379,7 +381,8 @@ def test_handle_message_with_callback(handler):
         'callback': 'xxx'
     }
     handler.handle_message(message)
-    threadlocal.reset.assert_called_with(websocket=handler, message=message, **mock_session_data)
+    threadlocal.reset.assert_called_with(websocket=handler, message=message, headers=mock_header_data,
+                                         **mock_session_data)
     handler.internal_action.assert_called_with(None, None, 'xxx')
     handler.update_triggers.assert_called_with(None, 'xxx', services.foo.bar, ['baf'], {}, 'baz', ANY)
     handler.send.assert_called_with(data='baz', callback='xxx', client=None, _time=ANY)
@@ -393,7 +396,8 @@ def test_handle_method_with_client(handler):
         'client': 'xxx'
     }
     handler.handle_message(message)
-    threadlocal.reset.assert_called_with(websocket=handler, message=message, **mock_session_data)
+    threadlocal.reset.assert_called_with(websocket=handler, message=message, headers=mock_header_data,
+                                         **mock_session_data)
     handler.internal_action.assert_called_with(None, 'xxx', None)
     handler.update_triggers.assert_called_with('xxx', None, services.foo.bar, [], {'baf': 1}, 'baz', ANY)
     assert not handler.send.called
@@ -403,7 +407,8 @@ def test_handle_method_with_client(handler):
 def test_handle_message_client_error(handler):
     message = {'method': 'foo.err', 'client': 'xxx'}
     handler.handle_message(message)
-    threadlocal.reset.assert_called_with(websocket=handler, message=message, **mock_session_data)
+    threadlocal.reset.assert_called_with(websocket=handler, message=message, headers=mock_header_data,
+                                         **mock_session_data)
     handler.internal_action.assert_called_with(None, 'xxx', None)
     handler.update_triggers.assert_called_with('xxx', None, services.foo.err, [], {}, handler.NO_RESPONSE, ANY)
     assert log.error.called
@@ -414,7 +419,8 @@ def test_handle_message_client_error(handler):
 def test_handle_message_callback_error(handler):
     message = {'method': 'foo.err', 'callback': 'xxx'}
     handler.handle_message(message)
-    threadlocal.reset.assert_called_with(websocket=handler, message=message, **mock_session_data)
+    threadlocal.reset.assert_called_with(websocket=handler, message=message, headers=mock_header_data,
+                                         **mock_session_data)
     handler.internal_action.assert_called_with(None, None, 'xxx')
     handler.update_triggers.assert_called_with(None, 'xxx', services.foo.err, [], {}, handler.NO_RESPONSE, ANY)
     assert log.error.called

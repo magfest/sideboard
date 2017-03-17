@@ -451,9 +451,9 @@ class TestLocallySubscribes(object):
         assert errored.called and working.called  # exception didn't halt execution
 
     def test_notify_triggers_local_updates(self, monkeypatch):
-        monkeypatch.setattr(local_broadcaster, 'delayed', Mock())
+        monkeypatch.setattr(local_broadcaster, 'defer', Mock())
         notify('foo')
-        local_broadcaster.delayed.assert_called_with(0, ['foo'], trigger='manual', originating_client=None)
+        local_broadcaster.defer.assert_called_with(['foo'], trigger='manual', originating_client=None)
 
 
 def test_cached_property():

@@ -17,7 +17,7 @@ from rpctools.jsonrpc import ServerProxy
 from ws4py.server.cherrypyserver import WebSocketPlugin
 
 import sideboard.websockets
-from sideboard.lib import log, config, subscribes, notifies, services, cached_property, WebSocket
+from sideboard.lib import log, config, subscribes, notifies, notify, services, cached_property, WebSocket
 from sideboard.tests import service_patcher, config_patcher, get_available_port
 from sideboard.tests.test_sa import Session
 
@@ -237,9 +237,9 @@ class TestWebsocketSubscriptions(SideboardServerTest):
     def get_names(self):
         return self.names
 
-    @notifies('names')
     def change_name(self, name=None):
         self.names[-1] = name or uuid4().hex
+        notify('names', delay=True)
 
     @notifies('names')
     def change_name_then_error(self):
@@ -432,7 +432,7 @@ class TestWebsocketsCrudSubscriptions(SideboardServerTest):
             pass
         mr = self.mr = MockCrud()
         for name in ['create', 'update', 'delete']:
-            setattr(mr, name, Session.crud.crud_notifies(self.make_crud_method(name), delay=0.5))
+            setattr(mr, name, Session.crud.crud_notifies(self.make_crud_method(name)))
         for name in ['read', 'count']:
             setattr(mr, name, Session.crud.crud_subscribes(self.make_crud_method(name)))
         service_patcher('crud', mr)

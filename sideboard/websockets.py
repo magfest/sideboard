@@ -21,6 +21,7 @@ from sideboard.lib import log, class_property, Caller
 from sideboard.config import config
 
 local_subscriptions = defaultdict(list)
+DELAYED_NOTIFICATIONS_KEY = 'sideboard.delayed_notifications'
 
 
 class threadlocal(object):
@@ -152,13 +153,16 @@ def _normalize_channels(*channels):
     return list(set(normalized_channels))
 
 
-def notify(channels, trigger="manual", delay=0, originating_client=None):
+def notify(channels, trigger="manual", delay=False, originating_client=None):
     """
     Manually trigger all subscriptions on the given channels.  The following
     optional parameters may be specified:
 
     trigger: Used in log messages if you want to distinguish between triggers.
-    delay: If provided, wait this many seconds before triggering the broadcast.
+    delay: Boolean indicating whether the notification should happen immediately
+           or after the current WebSocket RPC method has completed.  Note that
+           if this parameter is set when notify is called outside of a WebSocket
+           RPC request, no notification will ever happen.
     originating_client: Websocket subscriptions will NOT fire if they have the
                         same client as the trigger.
     """
@@ -167,8 +171,27 @@ def notify(channels, trigger="manual", delay=0, originating_client=None):
         'trigger': trigger,
         'originating_client': originating_client or threadlocal.get_client()
     }
-    broadcaster.delayed(delay, channels, **context)
-    local_broadcaster.delayed(delay, channels, **context)
+    if delay:
+        threadlocal.setdefault(DELAYED_NOTIFICATIONS_KEY, []).append([channels, context])
+    else:
+        broadcaster.defer(channels, **context)
+        local_broadcaster.defer(channels, **context)
+
+
+def trigger_delayed_notifications():
+    """
+    Sometimes plugins might want to call notify() and have it trigger after
+    their RPC method has completed its call.  For example, a plugin might call
+    notify() in the middle of a database transaction and want the notification
+    to happen after a commit has occurred.  When notify() is called with
+    delay=True then it appends to a list, and this method goes through that list
+    and triggers broadcasts for those notifications.
+    """
+    if threadlocal.get(DELAYED_NOTIFICATIONS_KEY):
+        for channels, context in threadlocal.get(DELAYED_NOTIFICATIONS_KEY):
+            broadcaster.defer(channels, **context)
+            local_broadcaster.defer(channels, **context)
+        threadlocal.set(DELAYED_NOTIFICATIONS_KEY, [])
 
 
 def notifies(*args, **kwargs):
@@ -188,7 +211,6 @@ def notifies(*args, **kwargs):
     >>> getattr(fn_dict, 'notifies')
     ['dict']
     """
-    delay = kwargs.pop("delay", 0)
     channels = _normalize_channels(*args)
 
     def decorated_func(func):
@@ -197,7 +219,7 @@ def notifies(*args, **kwargs):
             try:
                 return func(*args, **kwargs)
             finally:
-                notify(channels, trigger=func.__name__, delay=delay)
+                notify(channels, trigger=func.__name__)
 
         notifier_func.notifies = channels
         return notifier_func
@@ -376,6 +398,9 @@ class WebSocketDispatcher(WebSocket):
             meaningful) and /wsrpc being client-cert protected (so the username
             will always be 'rpc').
 
+        header_fields: We copy header fields from the request that initiated the
+            websocket connection.
+
         cached_queries and cached_fingerprints: When we receive a subscription
             update, Sideboard re-runs all of the subscription methods to see if
             new data needs to be pushed out.  We do this by storing all of the
@@ -407,6 +432,16 @@ class WebSocketDispatcher(WebSocket):
         self.client_locks = defaultdict(RLock)
         self.cached_queries, self.cached_fingerprints = defaultdict(dict), defaultdict(dict)
         self.session_fields = self.check_authentication()
+        self.header_fields = self.fetch_headers()
+
+    @classmethod
+    def fetch_headers(cls):
+        """
+        This method returns a dict with all of the header fields we want to
+        store for this websocket so that we can set them as threadlocal global
+        variables for all subsequent websocket RPC requests.
+        """
+        return {field: cherrypy.request.headers.get(field) for field in config['ws.header_fields']}
 
     @classmethod
     def check_authentication(cls):
@@ -605,7 +640,7 @@ class WebSocketDispatcher(WebSocket):
         """
         if callback in self.cached_queries[client]:
             function, args, kwargs, client_data = self.cached_queries[client][callback]
-            threadlocal.reset(websocket=self, client_data=client_data, **self.session_fields)
+            threadlocal.reset(websocket=self, client_data=client_data, headers=self.header_fields, **self.session_fields)
             result = function(*args, **kwargs)
             self.send(trigger=trigger, client=client, callback=callback, data=result)
 
@@ -661,7 +696,7 @@ class WebSocketDispatcher(WebSocket):
         """
         before = time.time()
         duration, result = None, None
-        threadlocal.reset(websocket=self, message=message, **self.session_fields)
+        threadlocal.reset(websocket=self, message=message, headers=self.header_fields, **self.session_fields)
         action, callback, client, method = message.get('action'), message.get('callback'), message.get('client'), message.get('method')
         try:
             with self.client_lock(client):
@@ -674,6 +709,7 @@ class WebSocketDispatcher(WebSocket):
                         result = func(*args, **kwargs)
                         duration = (time.time() - before) if config['debug'] else None
                     finally:
+                        trigger_delayed_notifications()
                         self.update_triggers(client, callback, func, args, kwargs, result, duration)
         except:
             log.error('unexpected websocket dispatch error', exc_info=True)
