@@ -19,6 +19,7 @@ if sys.version_info[0] == 2:
     requires = ['CherryPy==3.2.2' if 'cherrypy' in r.lower() else r for r in requires]
 
 if __name__ == '__main__':
+    setup_requires = {'setup_requires': ['distribute']} if sys.version_info[0] == 2 else {}
     setup(
         name=pkg_name,
         version=__version__,
@@ -37,5 +38,6 @@ if __name__ == '__main__':
         },
         extras_require={
             'perftrace': ['python-prctl>=1.6.1', 'psutil>=4.3.0']
-        }
+        },
+        **setup_requires
     )
