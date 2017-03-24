@@ -3,7 +3,7 @@ cherrypy==8.9.1
 ws4py>=0.3.2
 SQLAlchemy>=1.0.0
 six>=1.5.2
-Jinja2>=2.6
+Jinja2>=2.7
 rpctools>=0.3.1
 logging_unterpolation>=0.2.0
 requests>=2.2.1
