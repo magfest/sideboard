@@ -384,7 +384,9 @@ class WebSocket(object):
         originating_ws = sideboard.lib.threadlocal.get('websocket')
         if client and originating_ws:
             sub = originating_ws.passthru_subscriptions.get(client)
-            if not sub:
+            if sub:
+                sub.method = method
+            else:
                 sub = _Subscriber(method=method, src_client=client, dst_client=self._next_id('client'), src_ws=originating_ws, dest_ws=self)
                 originating_ws.passthru_subscriptions[client] = sub
             return sub
