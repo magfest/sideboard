@@ -18,6 +18,28 @@ from sideboard.lib.sa._crud import normalize_query, collect_ancestor_classes
 from sideboard.lib.sa import SessionManager, UUID, JSON, declarative_base, CrudException, crudable, text_length_validation, regex_validation
 
 
+def test_declarative_base_without_parameters():
+
+    @declarative_base
+    class BaseTest:
+        pass
+
+    qualified_name = '{}.{}'.format(BaseTest.__module__, BaseTest.__name__)
+    assert qualified_name == 'sqlalchemy.ext.declarative.api.BaseTest'
+    assert BaseTest.__tablename__ == 'base_test'
+
+
+def test_declarative_base_with_parameters():
+
+    @declarative_base(name='NameOverride')
+    class BaseTest:
+        pass
+
+    qualified_name = '{}.{}'.format(BaseTest.__module__, 'NameOverride')
+    assert qualified_name == 'sqlalchemy.ext.declarative.api.NameOverride'
+    assert BaseTest.__tablename__ == 'name_override'
+
+
 @declarative_base
 class Base(object):
     id = Column(UUID(), primary_key=True, default=uuid.uuid4)

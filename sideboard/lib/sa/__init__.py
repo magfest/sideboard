@@ -143,7 +143,17 @@ else:
     __all__.append('UTCDateTime')
 
 
-def declarative_base(klass):
+# SQLAlchemy doesn't expose its default constructor as a nicely importable
+# function, so we grab it from the function defaults.
+if six.PY2:
+    _spec_args, _spec_varargs, _spec_kwargs, _spec_defaults = inspect.getargspec(declarative.declarative_base)
+else:
+    _declarative_spec = inspect.getfullargspec(declarative.declarative_base)
+    _spec_args, _spec_defaults = _declarative_spec.args, _declarative_spec.defaults
+declarative_base_constructor = dict(zip(reversed(_spec_args), reversed(_spec_defaults)))['constructor']
+
+
+def declarative_base(*orig_args, **orig_kwargs):
     """
     Replacement for SQLAlchemy's declarative_base, which adds these features:
     1) This is a decorator.
@@ -153,32 +163,43 @@ def declarative_base(klass):
     4) Automatically setting __tablename__ to snake-case.
     5) Automatic integration with the SessionManager class.
     """
-    # SQLAlchemy doesn't expose its default constructor as a nicely importable function, so we grab it from the function defaults
-    if six.PY2:
-        spec_args, spec_varargs, spec_kwargs, spec_defaults = inspect.getargspec(declarative.declarative_base)
+    orig_args = list(orig_args)
+
+    def _decorate_base_class(klass):
+
+        class Mixed(klass, CrudMixin):
+            def __init__(self, *args, **kwargs):
+                """
+                Variant on SQLAlchemy model __init__ which sets default values on
+                initialization instead of immediately before the model is saved.
+                """
+                if '_model' in kwargs:
+                    assert kwargs.pop('_model') == self.__class__.__name__
+                declarative_base_constructor(self, *args, **kwargs)
+                for attr, col in self.__table__.columns.items():
+                    if col.default:
+                        self.__dict__.setdefault(attr, col.default.execute())
+
+        orig_kwargs['cls'] = Mixed
+        if 'name' not in orig_kwargs:
+            orig_kwargs['name'] = klass.__name__
+        if 'constructor' not in orig_kwargs:
+            orig_kwargs['constructor'] = klass.__init__ if '__init__' in klass.__dict__ else Mixed.__init__
+
+        Mixed = declarative.declarative_base(*orig_args, **orig_kwargs)
+        Mixed.BaseClass = _SessionInitializer._base_classes[klass.__module__] = Mixed
+        Mixed.__tablename__ = declarative.declared_attr(lambda cls: _camelcase_to_underscore(cls.__name__))
+        return Mixed
+
+    is_class_decorator = not orig_kwargs and \
+            len(orig_args) == 1 and \
+            isinstance(orig_args[0], type) and \
+            not isinstance(orig_args[0], sqlalchemy.engine.Connectable)
+
+    if is_class_decorator:
+        return _decorate_base_class(orig_args.pop())
     else:
-        declarative_spec = inspect.getfullargspec(declarative.declarative_base)
-        spec_args, spec_defaults = declarative_spec.args, declarative_spec.defaults
-    default_constructor = dict(zip(reversed(spec_args), reversed(spec_defaults)))['constructor']
-
-    class Mixed(klass, CrudMixin):
-        def __init__(self, *args, **kwargs):
-            """
-            Variant on SQLAlchemy model __init__ which sets default values on
-            initialization instead of immediately before the model is saved.
-            """
-            if '_model' in kwargs:
-                assert kwargs.pop('_model') == self.__class__.__name__
-            default_constructor(self, *args, **kwargs)
-            for attr, col in self.__table__.columns.items():
-                if col.default:
-                    self.__dict__.setdefault(attr, col.default.execute())
-
-    constructor = {'constructor': klass.__init__ if '__init__' in klass.__dict__ else Mixed.__init__}
-    Mixed = declarative.declarative_base(cls=Mixed, **constructor)
-    Mixed.BaseClass = _SessionInitializer._base_classes[klass.__module__] = Mixed
-    Mixed.__tablename__ = declarative.declared_attr(lambda cls: _camelcase_to_underscore(cls.__name__))
-    return Mixed
+        return _decorate_base_class
 
 
 class _SessionInitializer(type):
