@@ -24,19 +24,15 @@ def test_declarative_base_without_parameters():
     class BaseTest:
         pass
 
-    qualified_name = '{}.{}'.format(BaseTest.__module__, BaseTest.__name__)
-    assert qualified_name == 'sqlalchemy.ext.declarative.api.BaseTest'
     assert BaseTest.__tablename__ == 'base_test'
 
 
 def test_declarative_base_with_parameters():
 
-    @declarative_base(name='NameOverride')
+    @declarative_base(name=str('NameOverride'))
     class BaseTest:
         pass
 
-    qualified_name = '{}.{}'.format(BaseTest.__module__, 'NameOverride')
-    assert qualified_name == 'sqlalchemy.ext.declarative.api.NameOverride'
     assert BaseTest.__tablename__ == 'name_override'
 
 

@@ -193,7 +193,7 @@ def declarative_base(*orig_args, **orig_kwargs):
 
     is_class_decorator = not orig_kwargs and \
             len(orig_args) == 1 and \
-            isinstance(orig_args[0], type) and \
+            inspect.isclass(orig_args[0]) and \
             not isinstance(orig_args[0], sqlalchemy.engine.Connectable)
 
     if is_class_decorator:
