@@ -18,6 +18,24 @@ from sideboard.lib.sa._crud import normalize_query, collect_ancestor_classes
 from sideboard.lib.sa import SessionManager, UUID, JSON, declarative_base, CrudException, crudable, text_length_validation, regex_validation
 
 
+def test_declarative_base_without_parameters():
+
+    @declarative_base
+    class BaseTest:
+        pass
+
+    assert BaseTest.__tablename__ == 'base_test'
+
+
+def test_declarative_base_with_parameters():
+
+    @declarative_base(name=str('NameOverride'))
+    class BaseTest:
+        pass
+
+    assert BaseTest.__tablename__ == 'name_override'
+
+
 @declarative_base
 class Base(object):
     id = Column(UUID(), primary_key=True, default=uuid.uuid4)
