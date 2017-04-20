@@ -282,7 +282,7 @@ class SessionManager(object):
                     return subclasses[singular]
 
             if name.lower().endswith('ies'):
-                singular = name[:-3] + 'sy'  # TODO: sy looks like a typo, and we need to either make this better or get rid of it
+                singular = name[:-3] + 'y'
                 if singular in subclasses:
                     return subclasses[singular]
 
