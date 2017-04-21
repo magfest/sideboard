@@ -206,7 +206,8 @@ class TestNamingConventions(object):
     @pytest.mark.parametrize('sqltext,expected', [
         ('failed_logins >= 3', 'failed_logins_ge_3'),
         ('failed_logins > 3', 'failed_logins_gt_3'),
-        ('   failed_logins   =   3'  , 'failed_logins_eq_3')
+        ('   failed_logins   =   3   '  , 'failed_logins_eq_3'),
+        ('0123456789012345678901234567890123', '1e4008bc148c5486a3c92b2377fa1c45')
     ])
     def test_check_constraint_naming_convention(self, sqltext, expected):
         check_constraint = CheckConstraint(sqltext)
@@ -232,7 +233,7 @@ class TestDeclarativeBaseConstructor(object):
 
         assert Foo().id is None
 
-    def test_declarative_base_without_parameters():
+    def test_declarative_base_without_parameters(self):
 
         @declarative_base
         class BaseTest:
@@ -240,7 +241,7 @@ class TestDeclarativeBaseConstructor(object):
 
         assert BaseTest.__tablename__ == 'base_test'
 
-    def test_declarative_base_with_parameters():
+    def test_declarative_base_with_parameters(self):
 
         @declarative_base(name=str('NameOverride'))
         class BaseTest:

@@ -150,6 +150,9 @@ def check_constraint_naming_convention(constraint, table):
     non-alphanumeric, non-underscore operators converted to text, and all
     other non-alphanumeric, non-underscore substrings replaced by underscores.
 
+    If the generated name is longer than 32 characters, a uuid5 based on the
+    generated name will be returned instead.
+
     >>> check_constraint_naming_convention(CheckConstraint('failed_logins > 3'), Table('account'))
     'failed_logins_gt_3'
 
@@ -171,7 +174,10 @@ def check_constraint_naming_convention(constraint, table):
     for operator, text in replacements:
         constraint_name = constraint_name.replace(operator, text)
 
-    return re.sub('[\W\s]+', '_', constraint_name)
+    constraint_name = re.sub('[\W\s]+', '_', constraint_name)
+    if len(constraint_name) > 32:
+        constraint_name = uuid.uuid5(uuid.NAMESPACE_OID, constraint_name).hex
+    return constraint_name
 
 
 # SQLAlchemy doesn't expose its default constructor as a nicely importable
