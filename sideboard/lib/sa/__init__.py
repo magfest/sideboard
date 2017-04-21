@@ -153,7 +153,7 @@ def check_constraint_naming_convention(constraint, table):
     If the generated name is longer than 32 characters, a uuid5 based on the
     generated name will be returned instead.
 
-    >>> check_constraint_naming_convention(CheckConstraint('failed_logins > 3'), Table('account'))
+    >>> check_constraint_naming_convention(CheckConstraint('failed_logins > 3'), Table('account', MetaData()))
     'failed_logins_gt_3'
 
     See: http://docs.sqlalchemy.org/en/latest/core/constraints.html#configuring-constraint-naming-conventions
