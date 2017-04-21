@@ -143,6 +143,37 @@ else:
     __all__.append('UTCDateTime')
 
 
+def check_constraint_naming_convention(constraint, table):
+    """Creates a unique name for an unnamed CheckConstraint.
+
+    The generated name is the SQL text of the CheckConstraint with
+    non-alphanumeric, non-underscore operators converted to text, and all
+    other non-alphanumeric, non-underscore substrings replaced by underscores.
+
+    >>> check_constraint_naming_convention(CheckConstraint('failed_logins > 3'), Table('account'))
+    'failed_logins_gt_3'
+
+    See: http://docs.sqlalchemy.org/en/latest/core/constraints.html#configuring-constraint-naming-conventions
+    """
+    # The text of the replacements doesn't matter, so long as it's unique
+    replacements = [
+        ('||/', 'cr'), ('<=', 'le'), ('>=', 'ge'), ('<>', 'nq'), ('!=', 'ne'),
+        ('||', 'ct'), ('<<', 'ls'), ('>>', 'rs'), ('!!', 'fa'), ('|/', 'sr'),
+        ('@>', 'cn'), ('<@', 'cb'), ('&&', 'an'), ('<', 'lt'), ('=', 'eq'),
+        ('>', 'gt'), ('!', 'ex'), ('"', 'qt'), ('#', 'hs'), ('$', 'dl'),
+        ('%', 'pc'), ('&', 'am'), ('\'', 'ap'), ('(', 'lpr'), (')', 'rpr'),
+        ('*', 'as'), ('+', 'pl'), (',', 'cm'), ('-', 'da'), ('.', 'pd'),
+        ('/', 'sl'), (':', 'co'), (';', 'sc'), ('?', 'qn'), ('@', 'at'),
+        ('[', 'lbk'), ('\\', 'bs'), (']', 'rbk'), ('^', 'ca'), ('`', 'tk'),
+        ('{', 'lbc'), ('|', 'pi'), ('}', 'rbc'), ('~', 'td')]
+
+    constraint_name = str(constraint.sqltext).strip()
+    for operator, text in replacements:
+        constraint_name = constraint_name.replace(operator, text)
+
+    return re.sub('[\W\s]+', '_', constraint_name)
+
+
 # SQLAlchemy doesn't expose its default constructor as a nicely importable
 # function, so we grab it from the function defaults.
 if six.PY2:
