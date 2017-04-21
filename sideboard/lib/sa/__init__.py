@@ -176,7 +176,7 @@ def check_constraint_naming_convention(constraint, table):
 
     constraint_name = re.sub('[\W\s]+', '_', constraint_name)
     if len(constraint_name) > 32:
-        constraint_name = uuid.uuid5(uuid.NAMESPACE_OID, constraint_name).hex
+        constraint_name = uuid.uuid5(uuid.NAMESPACE_OID, str(constraint_name)).hex
     return constraint_name
 
 
