@@ -206,7 +206,7 @@ class TestNamingConventions(object):
     @pytest.mark.parametrize('sqltext,expected', [
         ('failed_logins >= 3', 'failed_logins_ge_3'),
         ('failed_logins > 3', 'failed_logins_gt_3'),
-        ('   failed_logins   =   3   '  , 'failed_logins_eq_3'),
+        ('   failed_logins   =   3   ', 'failed_logins_eq_3'),
         ('0123456789012345678901234567890123', '1e4008bc148c5486a3c92b2377fa1c45')
     ])
     def test_check_constraint_naming_convention(self, sqltext, expected):
