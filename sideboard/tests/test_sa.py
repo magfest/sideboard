@@ -9,31 +9,14 @@ import sqlalchemy
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 from sqlalchemy.types import Boolean, Integer, UnicodeText
-from sqlalchemy.schema import Column, ForeignKey, UniqueConstraint
+from sqlalchemy.schema import Column, CheckConstraint, ForeignKey, MetaData, Table, UniqueConstraint
 from sqlalchemy.sql import case
 
 from sideboard.lib import log, listify
 from sideboard.tests import patch_session
 from sideboard.lib.sa._crud import normalize_query, collect_ancestor_classes
-from sideboard.lib.sa import SessionManager, UUID, JSON, declarative_base, CrudException, crudable, text_length_validation, regex_validation
-
-
-def test_declarative_base_without_parameters():
-
-    @declarative_base
-    class BaseTest:
-        pass
-
-    assert BaseTest.__tablename__ == 'base_test'
-
-
-def test_declarative_base_with_parameters():
-
-    @declarative_base(name=str('NameOverride'))
-    class BaseTest:
-        pass
-
-    assert BaseTest.__tablename__ == 'name_override'
+from sideboard.lib.sa import check_constraint_naming_convention, crudable, declarative_base, \
+    regex_validation, text_length_validation, CrudException, JSON, SessionManager, UUID
 
 
 @declarative_base
@@ -218,6 +201,21 @@ def db(request, init_db):
     return init_db
 
 
+class TestNamingConventions(object):
+
+    @pytest.mark.parametrize('sqltext,expected', [
+        ('failed_logins >= 3', 'failed_logins_ge_3'),
+        ('failed_logins > 3', 'failed_logins_gt_3'),
+        ('   failed_logins   =   3   ', 'failed_logins_eq_3'),
+        ('0123456789012345678901234567890123', '1e4008bc148c5486a3c92b2377fa1c45')
+    ])
+    def test_check_constraint_naming_convention(self, sqltext, expected):
+        check_constraint = CheckConstraint(sqltext)
+        table = Table('account', MetaData())
+        result = check_constraint_naming_convention(check_constraint, table)
+        assert result == expected
+
+
 class TestDeclarativeBaseConstructor(object):
     def test_default_init(self):
         assert User().id  # default is applied at initialization instead of on save
@@ -234,6 +232,22 @@ class TestDeclarativeBaseConstructor(object):
             bar = Column(Boolean())
 
         assert Foo().id is None
+
+    def test_declarative_base_without_parameters(self):
+
+        @declarative_base
+        class BaseTest:
+            pass
+
+        assert BaseTest.__tablename__ == 'base_test'
+
+    def test_declarative_base_with_parameters(self):
+
+        @declarative_base(name=str('NameOverride'))
+        class BaseTest:
+            pass
+
+        assert BaseTest.__tablename__ == 'name_override'
 
 
 class TestCrudCount(object):
