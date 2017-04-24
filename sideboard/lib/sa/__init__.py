@@ -291,12 +291,13 @@ class SessionManager(object):
             self.session.close()
 
     @classmethod
-    def initialize_db(cls, drop=False):
+    def initialize_db(cls, drop=False, create=True):
         configure_mappers()
         cls.BaseClass.metadata.bind = cls.engine
         if drop:
             cls.BaseClass.metadata.drop_all(cls.engine, checkfirst=True)
-        cls.BaseClass.metadata.create_all(cls.engine, checkfirst=True)
+        if create:
+            cls.BaseClass.metadata.create_all(cls.engine, checkfirst=True)
 
     @classmethod
     def all_models(cls):
