@@ -670,6 +670,19 @@ class WebSocketDispatcher(WebSocket):
         elif action is not None:
             log.warn('unknown action {!r}', action)
 
+    def clear_cached_response(self, client, callback):
+        """
+        As explained above, Sideboard caches the most recent response to a
+        subscription so that when we check the subscription we can see if new
+        data needs to be sent.  However, if the user makes a series of requests
+        with the same client/callback ids which return the same response, they
+        probably still expect to get data back.  This method is therefore called
+        every time we receive an explicit RPC call for a subscription to discard
+        the cached value, ensuring that an explicit RPC call to a service
+        exposed via websocket always receives a response.
+        """
+        self.cached_fingerprints[client].pop(callback, None)
+
     def received_message(self, message):
         """
         This overrides the default ws4py event handler to parse the incoming
@@ -702,6 +715,7 @@ class WebSocketDispatcher(WebSocket):
             with self.client_lock(client):
                 self.internal_action(action, client, callback)
                 if method:
+                    self.clear_cached_response(client, callback)
                     func = self.get_method(method)
                     args, kwargs = get_params(message.get('params'))
                     result = self.NO_RESPONSE

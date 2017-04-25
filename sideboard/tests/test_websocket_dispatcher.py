@@ -149,7 +149,7 @@ def test_unsubscribe(wsd):
     client = 'client-1'
     wsd.client_locks[client] = RLock()
     wsd.cached_queries[client] = {None: (Mock(), (), {}, {})}
-    wsd.cached_fingerprints[client] = 'fingerprint'
+    wsd.cached_fingerprints[client][None] = 'fingerprint'
     WebSocketDispatcher.subscriptions['foo'] = {wsd: {client: 'subscription'}}
     wsd.handle_message({'action': 'unsubscribe', 'client': client})
     for d in [wsd.client_locks, wsd.cached_queries, wsd.cached_fingerprints, WebSocketDispatcher.subscriptions['foo']]:
@@ -449,3 +449,15 @@ def test_skip_send_if_closed(monkeypatch, wsd):
     monkeypatch.setattr(WebSocketDispatcher, 'is_closed', True)
     wsd.send()
     assert WebSocket.send.call_count == 1
+
+
+def test_explicit_call_resets_cache(service_patcher, wsd):
+    service_patcher('foo', {
+        'bar': lambda: 'Hello World'
+    })
+    message = {'method': 'foo.bar', 'client': 'client-1', 'callback': 'callback-2'}
+    wsd.handle_message(message)
+    assert 'callback-2' in wsd.cached_fingerprints['client-1']
+    assert WebSocket.send.call_count == 1
+    wsd.handle_message(message)
+    assert WebSocket.send.call_count == 2
