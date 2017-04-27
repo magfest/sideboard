@@ -28,5 +28,7 @@ def _discover_plugin_dirs():
 def _discover_plugins():
     for name, path in _discover_plugin_dirs():
         sys.path.append(path)
-        plugins[name] = importlib.import_module(name)
         plugin_dirs[name] = path
+
+    for name, path in plugin_dirs:
+        plugins[name] = importlib.import_module(name)
