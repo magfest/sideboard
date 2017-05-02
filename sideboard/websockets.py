@@ -376,6 +376,14 @@ class WebSocketDispatcher(WebSocket):
     adding and removing their subscriptions from this data structure.
     """
 
+    instances = set()
+    """
+    When debugging Sideboard, it can be useful to introspect a list of all
+    open websocket connections which have been made to this server.  Instances
+    of this class add themselves to this set when instantiated and remove
+    themselves when closed.
+    """
+
     def __init__(self, *args, **kwargs):
         """
         This passes all arguments to the parent constructor.  In addition, it
@@ -427,6 +435,7 @@ class WebSocketDispatcher(WebSocket):
                 }
         """
         WebSocket.__init__(self, *args, **kwargs)
+        self.instances.add(self)
         self.send_lock = RLock()
         self.passthru_subscriptions = {}
         self.client_locks = defaultdict(RLock)
@@ -487,11 +496,14 @@ class WebSocketDispatcher(WebSocket):
         """
         triggered = set()
         for channel in sideboard.lib.listify(channels):
-            for websocket, clients in cls.subscriptions[channel].items():
-                for client, callbacks in clients.copy().items():
-                    if client != originating_client:
-                        for callback in callbacks:
-                            triggered.add((websocket, client, callback))
+            for websocket, clients in list(cls.subscriptions[channel].items()):
+                if websocket.is_closed:
+                    websocket.unsubscribe_all()
+                else:
+                    for client, callbacks in clients.copy().items():
+                        if client != originating_client:
+                            for callback in callbacks:
+                                triggered.add((websocket, client, callback))
 
         for websocket, client, callback in triggered:
             try:
@@ -557,6 +569,7 @@ class WebSocketDispatcher(WebSocket):
         """
         if self.is_closed:
             log.debug('ignoring send on an already closed websocket: {}', message)
+            self.unsubscribe_all()
             return
 
         message = {k: v for k, v in message.items() if v is not None}
@@ -579,9 +592,11 @@ class WebSocketDispatcher(WebSocket):
     def closed(self, code, reason=''):
         """
         This overrides the default closed handler to first clean up all of our
-        subscriptions and log a message before closing.
+        subscriptions, remove this websocket from the registry of instances,
+        and log a message before closing.
         """
         log.info('closing: code={!r} reason={!r}', code, reason)
+        self.instances.discard(self)
         self.unsubscribe_all()
         WebSocket.closed(self, code, reason)
 
@@ -621,8 +636,10 @@ class WebSocketDispatcher(WebSocket):
     def unsubscribe_all(self):
         """Called on close to tear down all of this websocket's subscriptions."""
         for clients in self.subscriptions.values():
-            for client in clients.pop(self, {}):
-                self.teardown_passthru(client)
+            clients.pop(self, {})
+
+        for passthru_client in list(self.passthru_subscriptions.keys()):
+            self.teardown_passthru(passthru_client)
 
     def update_subscriptions(self, client, callback, channels):
         """Updates WebSocketDispatcher.subscriptions for the given client/channels."""
