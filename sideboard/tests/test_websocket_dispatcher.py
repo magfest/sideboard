@@ -15,14 +15,22 @@ mock_session_data = {'username': 'mock_user', 'user_id': 'mock_id'}
 mock_header_data = {'REMOTE_USER': 'mock_user', 'REMOTE_USER_ID': 'mock_id'}
 
 
+def mock_wsd():
+    wsd = Mock()
+    wsd.is_closed = False
+    return wsd
+
+
 @pytest.yield_fixture(autouse=True)
-def cleanup_threadlocal():
+def cleanup():
     yield
     threadlocal.reset()
+    WebSocketDispatcher.instances.clear()
 
 
 @pytest.fixture
 def wsd(monkeypatch):
+    WebSocketDispatcher.instances.clear()
     monkeypatch.setattr(WebSocket, 'send', Mock())
     monkeypatch.setattr(WebSocket, 'closed', Mock())
     monkeypatch.setattr(WebSocketDispatcher, 'is_closed', False)
@@ -32,20 +40,22 @@ def wsd(monkeypatch):
 
 
 @pytest.fixture
-def ws1(): return Mock()
+def ws1(): return mock_wsd()
 
 
 @pytest.fixture
-def ws2(): return Mock()
+def ws2(): return mock_wsd()
 
 
 @pytest.fixture
-def ws3(): return Mock()
+def ws3(): return mock_wsd()
 
 
 @pytest.fixture
 def ws4():
     class RaisesError:
+        is_closed = False
+        unsubscribe_all = Mock()
         trigger = Mock(side_effect=Exception)
     return RaisesError
 
@@ -65,32 +75,43 @@ def subscriptions(request, wsd, ws1, ws2, ws3, ws4):
     WebSocketDispatcher.subscriptions['baf'][ws4]['client-3'].add(None)
 
 
+def test_instances(wsd):
+    assert WebSocketDispatcher.instances == {wsd}
+    wsd.closed('code', 'reason')
+    assert WebSocketDispatcher.instances == set()
+
+
 def test_get_all_subscribed(wsd, ws1, ws2, ws3, ws4):
     assert WebSocketDispatcher.get_all_subscribed() == {wsd, ws1, ws2, ws3, ws4}
 
 
-def test_basic_broadcast(ws1, ws2):
-    WebSocketDispatcher.broadcast('bar', trigger='manual')
-    ws1.trigger.assert_called_with(client='client-1', callback='callback-1', trigger='manual')
-    assert not ws2.trigger.called
+class TestBroadcast(object):
+    def test_basic_broadcast(self, ws1, ws2):
+        WebSocketDispatcher.broadcast('bar', trigger='manual')
+        ws1.trigger.assert_called_with(client='client-1', callback='callback-1', trigger='manual')
+        assert not ws2.trigger.called
+        assert not ws1.unsubscribe_all.called and not ws2.unsubscribe_all.called
 
+    def test_broadcast_with_originating_client(self, ws1, ws2):
+        WebSocketDispatcher.broadcast('foo', originating_client='client-1')
+        assert ws2.trigger.called and not ws1.trigger.called
 
-def test_broadcast_with_originating_client(ws1, ws2):
-    WebSocketDispatcher.broadcast('foo', originating_client='client-1')
-    assert ws2.trigger.called and not ws1.trigger.called
+    def test_multi_broadcast(self, ws1, ws2, ws3, ws4):
+        WebSocketDispatcher.broadcast(['foo', 'bar'])
+        assert ws1.trigger.called and ws2.trigger.called and not ws3.trigger.called and not ws4.trigger.called
 
+    def test_broadcast_error(self, ws4, monkeypatch):
+        monkeypatch.setattr(log, 'warn', Mock())
+        WebSocketDispatcher.broadcast('foo')
+        assert not ws4.trigger.called and not log.warn.called
+        WebSocketDispatcher.broadcast('baf')
+        assert ws4.trigger.called and log.warn.called and not ws4.unsubscribe_all.called
 
-def test_multi_broadcast(ws1, ws2, ws3, ws4):
-    WebSocketDispatcher.broadcast(['foo', 'bar'])
-    assert ws1.trigger.called and ws2.trigger.called and not ws3.trigger.called and not ws4.trigger.called
-
-
-def test_broadcast_error(ws4, monkeypatch):
-    monkeypatch.setattr(log, 'warn', Mock())
-    WebSocketDispatcher.broadcast('foo')
-    assert not ws4.trigger.called and not log.warn.called
-    WebSocketDispatcher.broadcast('baf')
-    assert ws4.trigger.called and log.warn.called
+    def test_broadcast_closed(self, ws1, ws2):
+        ws1.is_closed = True
+        WebSocketDispatcher.broadcast('foo')
+        assert ws2.trigger.called and not ws1.trigger.called
+        assert ws1.unsubscribe_all.called and not ws2.unsubscribe_all.called
 
 
 def test_basic_send(wsd):
@@ -171,13 +192,15 @@ def test_multi_unsubscribe(wsd):
 def test_unsubscribe_all(wsd, subscriptions):
     assert wsd in WebSocketDispatcher.subscriptions['foo']
     assert wsd in WebSocketDispatcher.subscriptions['bar']
-    sub = wsd.passthru_subscriptions['client-0'] = Mock()
+    sub1 = wsd.passthru_subscriptions['client-0'] = Mock()
+    sub2 = wsd.passthru_subscriptions['client-x'] = Mock()
 
     wsd.unsubscribe_all()
 
     assert wsd not in WebSocketDispatcher.subscriptions['foo']
     assert wsd not in WebSocketDispatcher.subscriptions['bar']
-    assert 'client-0' not in wsd.passthru_subscriptions and sub.unsubscribe.called
+    assert 'client-0' not in wsd.passthru_subscriptions and 'client-x' not in wsd.passthru_subscriptions
+    assert sub1.unsubscribe.called and sub2.unsubscribe.called
 
 
 def test_remote_unsubscribe(wsd, ws):
