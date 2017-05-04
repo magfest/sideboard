@@ -10,6 +10,7 @@ dist/
 *.pyc
 *.pyo
 development.ini
+test.ini
 sideboard/docs
 plugins/*
 !plugins/conftest.py
@@ -18,6 +19,8 @@ data/sessions/*
 data/*.db
 .tox
 node_modules/
+.cache
 distribute-*.tar.gz
 distribute_setup.py
 .eggs/
+.coverage

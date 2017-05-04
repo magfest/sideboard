@@ -4,7 +4,7 @@ import sys
 import json
 from copy import deepcopy
 from itertools import count
-from threading import RLock
+from threading import RLock, Event
 from datetime import datetime, timedelta
 from collections import Mapping, MutableMapping
 
@@ -59,25 +59,28 @@ class _WebSocketClientDispatcher(WebSocketClient):
 
 
 class _Subscriber(object):
-    def __init__(self, method, client, src_ws, dest_ws):
-        self.src_ws, self.dest_ws, self.method, self.client = src_ws, dest_ws, method, client
+    def __init__(self, method, src_client, dst_client, src_ws, dest_ws):
+        self.method, self.src_ws, self.dest_ws, self.src_client, self.dst_client = method, src_ws, dest_ws, src_client, dst_client
 
     def unsubscribe(self):
-        self.dest_ws.unsubscribe(self.client)
+        self.dest_ws.unsubscribe(self.dst_client)
 
     def callback(self, data):
-        self.src_ws.send(data=data, client=self.client)
+        self.src_ws.send(data=data, client=self.src_client)
 
     def errback(self, error):
-        self.src_ws.send(error=error, client=self.client)
+        self.src_ws.send(error=error, client=self.src_client)
 
     def __call__(self, *args, **kwargs):
         self.dest_ws.subscribe({
-            'client': self.client,
+            'client': self.dst_client,
             'callback': self.callback,
             'errback': self.errback
         }, self.method, *args, **kwargs)
         return self.src_ws.NO_RESPONSE
+
+    def __del__(self):
+        self.unsubscribe()
 
 
 class WebSocket(object):
@@ -112,6 +115,17 @@ class WebSocket(object):
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
 
+    def preprocess(self, method, params):
+        """
+        Each message we send has its parameters passed to this function and
+        the actual parameters sent are whatever this function returns.  By
+        default this just returns the message unmodified, but plugins can
+        override this to add whatever logic is needed.  We pass the method
+        name in its full "service.method" form in case the logic depends on
+        the service being invoked.
+        """
+        return params
+
     @property
     def _should_reconnect(self):
         interval = min(config['ws.reconnect_interval'], 2 ** self._reconnect_attempts)
@@ -143,7 +157,8 @@ class WebSocket(object):
         try:
             for cb in self._callbacks.values():
                 if 'client' in cb:
-                    self._send(method=cb['method'], params=cb['params'], client=cb['client'])
+                    params = cb['paramback']() if 'paramback' in cb else cb['params']
+                    self._send(method=cb['method'], params=params, client=cb['client'])
         except:
             pass  # self._send() already closes and logs on error
 
@@ -196,7 +211,7 @@ class WebSocket(object):
         aren't valid responses to an outstanding call or subscription.  By
         default this just logs an error message.  You can override this by
         subclassing this class, or just by assigning a hander method, e.g.
-        
+
         >>> ws = WebSocket()
         >>> ws.fallback = some_handler_function
         >>> ws.connect()
@@ -245,46 +260,64 @@ class WebSocket(object):
         Send a websocket request which you expect to subscribe you to a channel
         with a callback which will be called every time there is new data, and
         return the client id which uniquely identifies this subscription.
-        
+
         Callback may be either a function or a dictionary in the form
         {
             'callback': <function>,
-            'errback': <function>
+            'errback': <function>,   # optional
+            'paramback: <function>,  # optional
+            'client': <string>       # optional
         }
         Both callback and errback take a single argument; for callback, this is
         the return value of the method, for errback it is the error message
         returning.  If no errback is specified, we will log errors at the ERROR
         level and do nothing further.
-        
+
+        The paramback function exists for subscriptions where we might want to
+        pass different parameters every time we reconnect.  This might be used
+        for e.g. time-based parameters.  This function takes no arguments and
+        returns the parameters which should be passed every time we connect
+        and fire (or re-fire) all of our subscriptions.
+
+        The client id is automatically generated if omitted, and you should not
+        set this yourself unless you really know what you're doing.
+
         The positional and keyword arguments passed to this function will be
-        used as the arguments to the remote method.
+        used as the arguments to the remote method, unless paramback is passed,
+        in which case that will be used to generate the params, and args/kwargs
+        will be ignored.
         """
         client = self._next_id('client')
         if isinstance(callback, Mapping):
-            assert 'callback' in callback and 'errback' in callback, 'callback and errback are required'
+            assert 'callback' in callback, 'callback is required'
             client = callback.setdefault('client', client)
             self._callbacks[client] = callback
         else:
             self._callbacks[client] = {
                 'client': client,
-                'callback': callback,
-                'errback': lambda result: log.error('{}(*{}, **{}) returned an error: {!r}', method, args, kwargs, result)
+                'callback': callback
             }
+
+        paramback = self._callbacks[client].get('paramback')
+        params = self.preprocess(method, paramback() if paramback else (args or kwargs))
+        self._callbacks[client].setdefault('errback', lambda result: log.error('{}(*{}, **{}) returned an error: {!r}', method, args, kwargs, result))
         self._callbacks[client].update({
             'method': method,
-            'params': args or kwargs
+            'params': params
         })
+
         try:
-            self._send(method=method, params=args or kwargs, client=client)
+            self._send(method=method, params=params, client=client)
         except:
             log.warn('initial subscription to {} at {!r} failed, will retry on reconnect', method, self.url)
+
         return client
 
     def unsubscribe(self, client):
         """
         Cancel the websocket subscription identified by the specified client id.
         This id is returned from the subscribe() method, e.g.
-        
+
         >>> client = ws.subscribe(some_callback, 'foo.some_function')
         >>> ws.unsubscribe(client)
         """
@@ -302,20 +335,23 @@ class WebSocket(object):
         kind was received.  The positional and keyword arguments to this method
         are used as the arguments to the rpc function call.
         """
+        finished = Event()
         result, error = [], []
         callback = self._next_id('callback')
         self._callbacks[callback] = {
-            'callback': result.append,
-            'errback': error.append
+            'callback': lambda response: (result.append(response), finished.set()),
+            'errback': lambda response: (error.append(response), finished.set())
         }
+        params = self.preprocess(method, args or kwargs)
         try:
-            self._send(method=method, params=args or kwargs, callback=callback)
+            self._send(method=method, params=params, callback=callback)
         except:
             self._callbacks.pop(callback, None)
             raise
 
-        for i in range(10 * config['ws.call_timeout']):
-            stopped.wait(0.1)
+        wait_until = datetime.now() + timedelta(seconds=config['ws.call_timeout'])
+        while datetime.now() < wait_until:
+            finished.wait(0.1)
             if stopped.is_set() or result or error:
                 break
         self._callbacks.pop(callback, None)
@@ -327,15 +363,31 @@ class WebSocket(object):
         """
         Returns a function which calls the specified method; useful for creating
         callbacks, e.g.
-        
+
         >>> authenticate = ws.make_caller('auth.authenticate')
         >>> authenticate('username', 'password')
         True
+
+        Sideboard supports "passthrough subscriptions", e.g.
+        -> a browser makes a subscription for the "foo.bar" method
+        -> the server has "foo" registered as a remote service
+        -> the server creates its own subscription to "foo.bar" on the remote
+           service and passes all results back to the client as they arrive
+
+        This method implements that by checking whether it was called from a
+        thread with an active websocket as part of a subscription request.  If
+        so then in addition to returning a callable, it also registers the
+        new subscription with the client websocket so it can be cleaned up when
+        the client websocket closes and/or when its subscription is canceled.
         """
+        client = sideboard.lib.threadlocal.get_client()
         originating_ws = sideboard.lib.threadlocal.get('websocket')
-        client = sideboard.lib.threadlocal.get('message', {}).get('client')
         if client and originating_ws:
-            return _Subscriber(client=client, src_ws=originating_ws, dest_ws=self, method=method)
+            sub = originating_ws.passthru_subscriptions.get(client)
+            if not sub:
+                sub = _Subscriber(method=method, src_client=client, dst_client=self._next_id('client'), src_ws=originating_ws, dest_ws=self)
+                originating_ws.passthru_subscriptions[client] = sub
+            return sub
         else:
             return lambda *args, **kwargs: self.call(method, *args, **kwargs)
 
@@ -367,8 +419,8 @@ class Model(MutableMapping):
 
     @property
     def dirty(self):
-        return {k:v for k,v in self._data.items() if v != self._orig_data.get(k)}
-    
+        return {k: v for k, v in self._data.items() if v != self._orig_data.get(k)}
+
     def to_dict(self):
         data = deepcopy(self._data)
         serialized = {k: v for k, v in data.pop(self._project_key, {}).items()}
@@ -379,7 +431,7 @@ class Model(MutableMapping):
                 serialized[k] = data['extra_data'].pop(k)
         serialized.update(data)
         return serialized
-    
+
     @property
     def _extra_data(self):
         return self._data.setdefault('extra_data', {})
@@ -418,7 +470,7 @@ class Model(MutableMapping):
 
     def __iter__(self):
         return iter(k for k in self.to_dict() if k != 'extra_data')
-    
+
     def __repr__(self):
         return repr(dict(self.items()))
 
@@ -446,16 +498,16 @@ class Subscription(object):
     ...     def __init__(self):
     ...         self.usernames = []
     ...         Subscription.__init__(self, 'admin.get_logged_in_users')
-    ...     
+    ...
     ...     def callback(self, users):
     ...         self.usernames = [user['username'] for user in users]
-    ... 
+    ...
     >>> users = UserList()
 
     The above code gives you a "users" object with a "usernames" attribute; when Sideboard
     starts, it opens a websocket connection to whichever remote server defines the "admin"
-    service (as defined in the rpc_services config section), then subscribes the the 
-    "admin.get_logged_in_users" method and calls the "callback" methon on every response.
+    service (as defined in the rpc_services config section), then subscribes to the
+    "admin.get_logged_in_users" method and calls the "callback" method on every response.
     """
 
     def __init__(self, rpc_method, *args, **kwargs):
@@ -490,4 +542,95 @@ class Subscription(object):
 
     def callback(self, response_data):
         """override this to define what to do with your rpc method return values"""
-        pass
+
+
+class MultiSubscription(object):
+    """
+    A version of the Subscription utility class which subscribes to an arbitrary
+    number of remote servers and aggregates the results from each.  You invoke
+    this similarly to Subscription class, with two main differences:
+
+    1) The first parameter is a list of hostnames to which we should connect.
+       Each hostname will have a websocket registered for it if one does not
+       already exist, using the standard config options under [rpc_services].
+
+    2) Unlike the Subscription class, we do not support the connect_immediately
+       parameter.  Because this class looks in the [rpc_services] config section
+       of every plugin to find the client cert settings, we need to wait for all
+       plugins to be loaded before trying to connect.
+
+    Like the Subscription class, you can instantiate this class directly, e.g.
+
+    >>> logged_in_users = MultiSubscription(['host1', 'host2'], 'admin.get_logged_in_users')
+    >>> logged_in_users.results  # this will always be the latest return values of your rpc method
+
+    The "results" attribute is a dictionary whose keys are the websocket objects
+    used to connect to each host, and whose values are the latest return values
+    from each of those websockets.  Hosts for which we have not yet received a
+    response will have no key/value pair in the "results" dictionary.
+
+    If you want to do postprocessing on the results, you can subclass this and
+    override the "callback" method, e.g.
+
+    >>> class UserList(MultiSubscription):
+    ...     def __init__(self):
+    ...         self.usernames = set()
+    ...         MultiSubscription.__init__(self, ['host1', 'host2'], 'admin.get_logged_in_users')
+    ...
+    ...     def callback(self, users, ws):
+    ...         self.usernames.update(user['username'] for user in users)
+    ...
+    >>> users = UserList()
+
+    The above code gives you a "users" object with a "usernames" attribute; when Sideboard
+    starts, it opens websocket connections to 'host1' and 'host2', then subscribes to the
+    "admin.get_logged_in_users" method and calls the "callback" method on every response.
+    """
+    def __init__(self, hostnames, rpc_method, *args, **kwargs):
+        from sideboard.lib import listify
+        self.hostnames, self.method, self.args, self.kwargs = listify(hostnames), rpc_method, args, kwargs
+        self.results, self.websockets, self._client_ids = {}, {}, {}
+        on_startup(self._subscribe)
+        on_shutdown(self._unsubscribe)
+
+    def _websocket(self, url, ssl_opts):
+        from sideboard.lib import services
+        return services._register_websocket(url, ssl_opts=ssl_opts)
+
+    def _subscribe(self):
+        from sideboard.lib._services import _ws_url, _rpc_opts, _ssl_opts
+        for hostname in self.hostnames:
+            rpc_opts = _rpc_opts(hostname)
+            self.websockets[hostname] = self._websocket(_ws_url(hostname, rpc_opts), _ssl_opts(rpc_opts))
+
+        for ws in self.websockets.values():
+            self._client_ids[ws] = ws.subscribe(self._make_callback(ws), self.method, *self.args, **self.kwargs)
+
+    def _unsubscribe(self):
+        for ws in self.websockets.values():
+            ws.unsubscribe(self._client_ids.get(ws))
+
+    def _make_callback(self, ws):
+        return lambda result_data: self._callback(result_data, ws)
+
+    def _callback(self, response_data, ws):
+        self.results[ws] = response_data
+        self.callback(response_data, ws)
+
+    def callback(self, result_data, ws):
+        """override this to define what to do with your rpc method return values"""
+
+    def refresh(self):
+        """
+        Sometimes we want to manually re-fire all of our subscription methods to
+        get the latest data.  This is useful in cases where the remote server
+        isn't necessarily programmed to always push the latest data as soon as
+        it's available, usually for performance reasons.  This method allows the
+        client to get the latest data more often than the server is programmed
+        to provide it.
+        """
+        for ws in self.websockets.values():
+            try:
+                self._callback(self.ws.call(self.method, *self.args, **self.kwargs), ws)
+            except:
+                log.warn('failed to fetch latest data from {} on {}', self.method, ws.url)

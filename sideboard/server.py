@@ -3,61 +3,33 @@ import os
 import sys
 
 import six
-#import ldap
 import cherrypy
 
 import sideboard
 from sideboard.internal import connection_checker
 from sideboard.jsonrpc import _make_jsonrpc_handler
-from sideboard.websockets import WebSocketDispatcher, WebSocketRoot
+from sideboard.websockets import WebSocketDispatcher, WebSocketRoot, WebSocketAuthError
 from sideboard.lib import log, listify, config, render_with_templates, services, threadlocal
+from sideboard.lib._cp import auth_registry
+
+default_auth_checker = auth_registry[config['default_authenticator']]['check']
+
+
+def reset_threadlocal():
+    threadlocal.reset(**{field: cherrypy.session.get(field) for field in config['ws.session_fields']})
+
+cherrypy.tools.reset_threadlocal = cherrypy.Tool('before_handler', reset_threadlocal, priority=51)
+
+
+def jsonrpc_reset(body):
+    reset_threadlocal()
+    threadlocal.set('client', body.get('websocket_client'))
 
 
 def jsonrpc_auth(body):
-    if 'username' not in cherrypy.session:
+    jsonrpc_reset(body)
+    if not default_auth_checker():
         raise cherrypy.HTTPError(401, 'not logged in')
-
-
-def ldap_auth(username, password):
-    if not username or not password:
-        return False
-    
-    try:
-        conn = ldap.initialize(config['ldap.url'])
-        
-        force_start_tls = False
-        if config['ldap.cacert']:
-            ldap.set_option(ldap.OPT_X_TLS_CACERTFILE, config['ldap.cacert'])
-            force_start_tls = True
-            
-        if config['ldap.cert']:
-            ldap.set_option(ldap.OPT_X_TLS_CERTFILE, config['ldap.cert'])
-            force_start_tls = True
-            
-        if config['ldap.key']:
-            ldap.set_option(ldap.OPT_X_TLS_KEYFILE, config['ldap.key'])
-            force_start_tls = True
-    
-        if force_start_tls:
-            conn.start_tls_s()
-        else:
-            conn.set_option(ldap.OPT_X_TLS_DEMAND, config['ldap.start_tls'])
-    except:
-        log.error('Error initializing LDAP connection', exc_info=True)
-        raise
-    
-    for basedn in listify(config['ldap.basedn']):
-        dn = '{}={},{}'.format(config['ldap.userattr'], username, basedn)
-        log.debug('attempting to bind with dn {}', dn)
-        try:
-            conn.simple_bind_s(dn, password)
-        except ldap.INVALID_CREDENTIALS as x:
-            continue
-        except:
-            log.warning("Error binding to LDAP server with dn", exc_info=True)
-            raise
-        else:
-            return True
 
 
 @render_with_templates(config['template_dir'])
@@ -70,13 +42,16 @@ class Root(object):
         raise cherrypy.HTTPRedirect('login?return_to=%s' % return_to)
 
     def login(self, username='', password='', message='', return_to=''):
+        if not config['debug']:
+            return 'Login page only available in debug mode.'
+
         if username:
-            if ldap_auth(username, password):
+            if config['debug'] and password == config['debug_password']:
                 cherrypy.session['username'] = username
-                raise cherrypy.HTTPRedirect(return_to)
+                raise cherrypy.HTTPRedirect(return_to or config['default_url'])
             else:
                 message = 'Invalid credentials'
-        
+
         return {
             'message': message,
             'username': username,
@@ -93,7 +68,8 @@ class Root(object):
                 'paths': []
             }
         for path, app in cherrypy.tree.apps.items():
-            if path:  # exclude what Sideboard itself mounts
+            # exclude what Sideboard itself mounts and grafted mount points
+            if path and hasattr(app, 'root'):
                 plugin = app.root.__module__.split('.')[0]
                 plugin_info[plugin]['paths'].append(path)
         return {
@@ -108,10 +84,7 @@ class Root(object):
     wsrpc = WebSocketRoot()
 
     json = _make_jsonrpc_handler(services.get_services(), precall=jsonrpc_auth)
-    jsonrpc = _make_jsonrpc_handler(services.get_services(),
-                                   precall=lambda body: threadlocal.reset(
-                                       username=cherrypy.session.get('username'),
-                                       client=body.get('websocket_client')))
+    jsonrpc = _make_jsonrpc_handler(services.get_services(), precall=jsonrpc_reset)
 
 
 class SideboardWebSocket(WebSocketDispatcher):
@@ -125,15 +98,15 @@ class SideboardWebSocket(WebSocketDispatcher):
     @classmethod
     def check_authentication(cls):
         host, origin = cherrypy.request.headers['host'], cherrypy.request.headers['origin']
-        if ('//' + host) not in origin:
+        if ('//' + host.split(':')[0]) not in origin:
             log.error('Javascript websocket connections must follow same-origin policy; origin {!r} does not match host {!r}', origin, host)
-            raise ValueError('Origin and Host headers do not match')
+            raise WebSocketAuthError('Origin and Host headers do not match')
 
-        if config['ws.auth_required'] and 'username' not in cherrypy.session:
+        if config['ws.auth_required'] and not cherrypy.session.get(config['ws.auth_field']):
             log.warning('websocket connections to this address must have a valid session')
-            raise ValueError('you are not logged in')
+            raise WebSocketAuthError('You are not logged in')
 
-        return cherrypy.session.get('username', '<UNAUTHENTICATED>')
+        return WebSocketDispatcher.check_authentication()
 
 
 class SideboardRpcWebSocket(SideboardWebSocket):
@@ -146,13 +119,7 @@ class SideboardRpcWebSocket(SideboardWebSocket):
 
     @classmethod
     def check_authentication(cls):
-        return 'rpc'
-
-
-def reset_threadlocal():
-    threadlocal.reset(username=cherrypy.session.get('username'))
-
-cherrypy.tools.reset_threadlocal = cherrypy.Tool('before_handler', reset_threadlocal, priority=51)
+        return {'username': 'rpc'}
 
 
 app_config = {
@@ -206,4 +173,4 @@ orig_mount = cherrypy.tree.mount
 cherrypy.tree.mount = mount
 cherrypy.tree.mount(Root(), '', app_config)
 
-del sys.modules['six.moves.winreg']  # kludgy workaround for CherryPy's autoreloader erroring on winreg
+sys.modules.pop('six.moves.winreg', None)  # kludgy workaround for CherryPy's autoreloader erroring on winreg for versions which have this

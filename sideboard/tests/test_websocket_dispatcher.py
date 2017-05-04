@@ -1,37 +1,52 @@
 from __future__ import unicode_literals
+from threading import RLock
 from collections import namedtuple
 
 import pytest
 from mock import Mock, ANY
 from ws4py.websocket import WebSocket
 
-from sideboard.lib import log, services, subscribes
+from sideboard.lib import log, services, subscribes, threadlocal
 from sideboard.websockets import WebSocketDispatcher, responder, threadlocal
 from sideboard.tests import service_patcher
 from sideboard.tests.test_websocket import ws
+
+mock_session_data = {'username': 'mock_user', 'user_id': 'mock_id'}
+
+
+@pytest.yield_fixture(autouse=True)
+def cleanup_threadlocal():
+    yield
+    threadlocal.reset()
 
 
 @pytest.fixture
 def wsd(monkeypatch):
     monkeypatch.setattr(WebSocket, 'send', Mock())
     monkeypatch.setattr(WebSocket, 'closed', Mock())
-    monkeypatch.setattr(WebSocketDispatcher, 'check_authentication', lambda self: 'mock_user')
+    monkeypatch.setattr(WebSocketDispatcher, 'is_closed', False)
+    monkeypatch.setattr(WebSocketDispatcher, 'check_authentication', lambda cls: mock_session_data)
     return WebSocketDispatcher(None)
+
 
 @pytest.fixture
 def ws1(): return Mock()
 
+
 @pytest.fixture
 def ws2(): return Mock()
 
+
 @pytest.fixture
 def ws3(): return Mock()
+
 
 @pytest.fixture
 def ws4():
     class RaisesError:
         trigger = Mock(side_effect=Exception)
     return RaisesError
+
 
 @pytest.fixture(autouse=True)
 def subscriptions(request, wsd, ws1, ws2, ws3, ws4):
@@ -57,13 +72,16 @@ def test_basic_broadcast(ws1, ws2):
     ws1.trigger.assert_called_with(client='client-1', callback='callback-1', trigger='manual')
     assert not ws2.trigger.called
 
+
 def test_broadcast_with_originating_client(ws1, ws2):
     WebSocketDispatcher.broadcast('foo', originating_client='client-1')
     assert ws2.trigger.called and not ws1.trigger.called
 
+
 def test_multi_broadcast(ws1, ws2, ws3, ws4):
     WebSocketDispatcher.broadcast(['foo', 'bar'])
     assert ws1.trigger.called and ws2.trigger.called and not ws3.trigger.called and not ws4.trigger.called
+
 
 def test_broadcast_error(ws4, monkeypatch):
     monkeypatch.setattr(log, 'warn', Mock())
@@ -77,17 +95,20 @@ def test_basic_send(wsd):
     wsd.send(foo='bar', baz=None)
     WebSocket.send.assert_called_with(ANY, '{"foo":"bar"}')
 
+
 def test_send_client_caching(wsd):
     wsd.send(client='xxx', data=123)
     wsd.send(client='xxx', data=123)
     wsd.send(client='yyy', data=321)
     assert WebSocket.send.call_count == 2
 
+
 def test_no_send_caching_without_client(wsd):
     wsd.send(data=123)
     wsd.send(data=123)
     wsd.send(data=321)
     assert WebSocket.send.call_count == 3
+
 
 def test_callback_based_send_caching(wsd):
     wsd.send(client='xxx', callback='yyy', data=123)
@@ -121,41 +142,49 @@ def test_get_method(wsd, service_patcher):
 def test_unsubscribe_from_nonexistent(wsd):
     wsd.unsubscribe('nonexistent')  # does not error
 
+
 def test_unsubscribe(wsd):
     client = 'client-1'
-    wsd.client_locks[client] = 'lock'
-    wsd.cached_queries[client] = {None: (Mock(), (), {})}
+    wsd.client_locks[client] = RLock()
+    wsd.cached_queries[client] = {None: (Mock(), (), {}, {})}
     wsd.cached_fingerprints[client] = 'fingerprint'
     WebSocketDispatcher.subscriptions['foo'] = {wsd: {client: 'subscription'}}
-    wsd.unsubscribe(client)
+    wsd.handle_message({'action': 'unsubscribe', 'client': client})
     for d in [wsd.client_locks, wsd.cached_queries, wsd.cached_fingerprints, WebSocketDispatcher.subscriptions['foo']]:
         assert client not in d
 
+
 def test_multi_unsubscribe(wsd):
     client = ['client-1', 'client-2']
-    wsd.client_locks = {'client-1': 'lock', 'client-2': 'lock'}
+    wsd.client_locks = {'client-1': RLock(), 'client-2': RLock()}
     wsd.cached_fingerprints = {'client-1': 'fingerprint', 'client-2': 'fingerprint'}
-    wsd.cached_queries = {'client-1': {None: (Mock(), (), {})}, 'client-2': {None: (Mock(), (), {})}}
+    wsd.cached_queries = {'client-1': {None: (Mock(), (), {}, {})}, 'client-2': {None: (Mock(), (), {}, {})}}
     WebSocketDispatcher.subscriptions['foo'] = {wsd: {'client-1': 'subscription', 'client-2': 'subscription'}}
-    wsd.unsubscribe(client)
+    wsd.handle_message({'action': 'unsubscribe', 'client': client})
     for d in [wsd.client_locks, wsd.cached_queries, wsd.cached_fingerprints, WebSocketDispatcher.subscriptions['foo']]:
         assert 'client-1' not in d
         assert 'client-2' not in d
 
-def test_unsubscribe_all(wsd):
+
+def test_unsubscribe_all(wsd, subscriptions):
     assert wsd in WebSocketDispatcher.subscriptions['foo']
     assert wsd in WebSocketDispatcher.subscriptions['bar']
+    sub = wsd.passthru_subscriptions['client-0'] = Mock()
+
     wsd.unsubscribe_all()
+
     assert wsd not in WebSocketDispatcher.subscriptions['foo']
     assert wsd not in WebSocketDispatcher.subscriptions['bar']
+    assert 'client-0' not in wsd.passthru_subscriptions and sub.unsubscribe.called
+
 
 def test_remote_unsubscribe(wsd, ws):
     ws.unsubscribe = Mock()
-    threadlocal.reset(websocket=ws, message={'client': 'xxx'})
-    wsd.cached_queries['xxx'] = {None: (ws.make_caller('remote.foo'), (), {})}
+    ws._next_id = Mock(return_value='yyy')
+    threadlocal.reset(websocket=wsd, message={'client': 'xxx'})
+    wsd.cached_queries['xxx'] = {None: (ws.make_caller('remote.foo'), (), {}, {})}
     wsd.unsubscribe('xxx')
-    ws.unsubscribe.assert_called_with('xxx')
-
+    ws.unsubscribe.assert_called_with('yyy')
 
 
 def test_update_subscriptions_with_new_callback(wsd):
@@ -163,16 +192,19 @@ def test_update_subscriptions_with_new_callback(wsd):
     assert WebSocketDispatcher.subscriptions['foo'][wsd]['client-0'] == {'callback-0', 'xxx'}
     assert WebSocketDispatcher.subscriptions['bar'][wsd]['client-0'] == {None}
 
+
 def test_update_subscriptions_with_existing_null_callback(wsd):
     wsd.update_subscriptions(client='client-0', callback=None, channels='foo')
     assert WebSocketDispatcher.subscriptions['foo'][wsd]['client-0'] == {'callback-0', None}
     assert WebSocketDispatcher.subscriptions['bar'][wsd]['client-0'] == set()
+
 
 def test_update_subscriptions_with_existing_callback(wsd):
     wsd.update_subscriptions(client='client-0', callback='callback-0', channels='baz')
     assert WebSocketDispatcher.subscriptions['foo'][wsd]['client-0'] == set()
     assert WebSocketDispatcher.subscriptions['bar'][wsd]['client-0'] == {None}
     assert WebSocketDispatcher.subscriptions['baz'][wsd]['client-0'] == {'callback-0'}
+
 
 def test_update_subscriptions_with_multiple_channels(wsd):
     wsd.update_subscriptions(client='client-0', callback='callback-0', channels=['foo', 'baz'])
@@ -183,25 +215,46 @@ def test_update_subscriptions_with_multiple_channels(wsd):
 
 @pytest.fixture
 def trig(wsd):
-    wsd.cached_queries['xxx']['yyy'] = (lambda *args, **kwargs: [args, kwargs], ('a', 'b'), {'c': 'd'})
+    wsd.cached_queries['xxx']['yyy'] = (lambda *args, **kwargs: [args, kwargs], ('a', 'b'), {'c': 'd'}, {})
     wsd.send = Mock()
     return wsd
+
+
+def increment():
+    count = threadlocal.client_data.setdefault('count', 0)
+    count += 1
+    threadlocal.client_data['count'] = count
+    return count
+
 
 def test_trigger(trig):
     trig.trigger(client='xxx', callback='yyy', trigger='zzz')
     trig.send.assert_called_with(client='xxx', callback='yyy', trigger='zzz', data=[('a', 'b'), {'c': 'd'}])
 
+
 def test_trigger_without_id(trig):
     trig.trigger(client='xxx', callback='yyy')
     trig.send.assert_called_with(client='xxx', callback='yyy', trigger=None, data=[('a', 'b'), {'c': 'd'}])
+
 
 def test_trigger_without_known_client(trig):
     trig.trigger(client='doesNotExist', callback='yyy')
     assert not trig.send.called
 
+
 def test_trigger_without_known_callback(trig):
     trig.trigger(client='xxx', callback='doesNotExist')
     assert not trig.send.called
+
+
+def test_trigger_with_client_data(wsd, trig, monkeypatch):
+    client = 'client-1'
+    monkeypatch.setitem(wsd.subscriptions['foo'][wsd], client, [None])
+    monkeypatch.setitem(wsd.cached_fingerprints, client, {None: 'fingerprint'})
+    monkeypatch.setitem(wsd.cached_queries, client, {None: (increment, (), {}, {'count': 7})})
+
+    wsd.trigger(client=client, callback=None)
+    wsd.send.assert_called_with(client=client, callback=None, trigger=None, data=8)
 
 
 @pytest.fixture
@@ -210,21 +263,25 @@ def up(wsd):
     wsd.update_subscriptions = Mock()
     return wsd
 
+
 @subscribes('foo')
 def foosub():
     return 'e'
 
+
 def test_update_triggers_client_and_callback(up):
     up.update_triggers('xxx', 'yyy', foosub, ('a', 'b'), {'c': 'd'}, 'e', 123)
     up.update_subscriptions.assert_called_with('xxx', 'yyy', ['foo'])
-    assert up.cached_queries['xxx']['yyy'] == (foosub, ('a', 'b'), {'c': 'd'})
+    assert up.cached_queries['xxx']['yyy'] == (foosub, ('a', 'b'), {'c': 'd'}, {})
     assert not up.send.called
+
 
 def test_update_triggers_client_no_callback(up):
     up.update_triggers('xxx', None, foosub, ('a', 'b'), {'c': 'd'}, 'e', 123)
     up.update_subscriptions.assert_called_with('xxx', None, ['foo'])
-    assert up.cached_queries['xxx'][None] == (foosub, ('a', 'b'), {'c': 'd'})
+    assert up.cached_queries['xxx'][None] == (foosub, ('a', 'b'), {'c': 'd'}, {})
     up.send.assert_called_with(trigger='subscribe', client='xxx', data='e', _time=123)
+
 
 def test_update_triggers_no_client(up):
     for callback in [None, 'yyy']:
@@ -233,10 +290,11 @@ def test_update_triggers_no_client(up):
         assert 'yyy' not in up.cached_queries[None]
         assert not up.send.called
 
+
 def test_update_triggers_with_error(up):
     up.update_triggers('xxx', None, foosub, ('a', 'b'), {'c': 'd'}, up.NO_RESPONSE, 123)
     up.update_subscriptions.assert_called_with('xxx', None, ['foo'])
-    assert up.cached_queries['xxx'][None] == (foosub, ('a', 'b'), {'c': 'd'})
+    assert up.cached_queries['xxx'][None] == (foosub, ('a', 'b'), {'c': 'd'}, {})
     assert not up.send.called
 
 
@@ -246,16 +304,19 @@ def act(wsd, monkeypatch):
     monkeypatch.setattr(log, 'warn', Mock())
     return wsd
 
+
 def test_unsubscribe_action(act):
     act.unsubscribe = Mock()
     act.internal_action('unsubscribe', 'xxx', 'yyy')
     act.unsubscribe.assert_called_with('xxx')
     assert not log.warn.called
 
+
 def test_unknown_action(act):
     act.internal_action('does_not_exist', 'xxx', 'yyy')
     assert not act.unsubscribe.called
     assert log.warn.called
+
 
 def test_no_action(act):
     act.internal_action(None, 'xxx', 'yyy')
@@ -272,17 +333,20 @@ def receiver(wsd, monkeypatch):
 
 Message = namedtuple('Message', ['data'])
 
+
 def test_received_message(receiver):
     receiver.received_message(Message('{}'))
     responder.defer.assert_called_with(ANY, {})
     assert not receiver.send.called
     assert not log.error.called
 
+
 def test_received_invalid_message(receiver):
     receiver.received_message(Message('not valid json'))
     assert not responder.defer.called
     receiver.send.assert_called_with(error=ANY)
     assert log.error.called
+
 
 def test_received_non_dict(receiver):
     receiver.received_message(Message('"valid json but not a dict"'))
@@ -307,6 +371,7 @@ def handler(ws, wsd, service_patcher, monkeypatch):
     wsd.update_triggers = Mock()
     return wsd
 
+
 def test_handle_message_with_callback(handler):
     message = {
         'method': 'foo.bar',
@@ -314,11 +379,12 @@ def test_handle_message_with_callback(handler):
         'callback': 'xxx'
     }
     handler.handle_message(message)
-    threadlocal.reset.assert_called_with(websocket=handler, message=message, username=handler.username)
+    threadlocal.reset.assert_called_with(websocket=handler, message=message, **mock_session_data)
     handler.internal_action.assert_called_with(None, None, 'xxx')
     handler.update_triggers.assert_called_with(None, 'xxx', services.foo.bar, ['baf'], {}, 'baz', ANY)
     handler.send.assert_called_with(data='baz', callback='xxx', client=None, _time=ANY)
     assert not log.error.called
+
 
 def test_handle_method_with_client(handler):
     message = {
@@ -327,31 +393,34 @@ def test_handle_method_with_client(handler):
         'client': 'xxx'
     }
     handler.handle_message(message)
-    threadlocal.reset.assert_called_with(websocket=handler, message=message, username=handler.username)
+    threadlocal.reset.assert_called_with(websocket=handler, message=message, **mock_session_data)
     handler.internal_action.assert_called_with(None, 'xxx', None)
     handler.update_triggers.assert_called_with('xxx', None, services.foo.bar, [], {'baf': 1}, 'baz', ANY)
     assert not handler.send.called
     assert not log.error.called
 
+
 def test_handle_message_client_error(handler):
     message = {'method': 'foo.err', 'client': 'xxx'}
     handler.handle_message(message)
-    threadlocal.reset.assert_called_with(websocket=handler, message=message, username=handler.username)
+    threadlocal.reset.assert_called_with(websocket=handler, message=message, **mock_session_data)
     handler.internal_action.assert_called_with(None, 'xxx', None)
     handler.update_triggers.assert_called_with('xxx', None, services.foo.err, [], {}, handler.NO_RESPONSE, ANY)
     assert log.error.called
     handler.send.assert_called_with(error=ANY, client='xxx', callback=None)
     assert handler.send.call_count == 1
 
+
 def test_handle_message_callback_error(handler):
     message = {'method': 'foo.err', 'callback': 'xxx'}
     handler.handle_message(message)
-    threadlocal.reset.assert_called_with(websocket=handler, message=message, username=handler.username)
+    threadlocal.reset.assert_called_with(websocket=handler, message=message, **mock_session_data)
     handler.internal_action.assert_called_with(None, None, 'xxx')
     handler.update_triggers.assert_called_with(None, 'xxx', services.foo.err, [], {}, handler.NO_RESPONSE, ANY)
     assert log.error.called
     handler.send.assert_called_with(error=ANY, callback='xxx', client=None)
     assert handler.send.call_count == 1
+
 
 def test_handle_message_remote_call(handler, ws):
     message = {'method': 'remote.method', 'callback': 'xxx', 'params': [1, 2]}
@@ -360,9 +429,17 @@ def test_handle_message_remote_call(handler, ws):
     assert not ws.subscribe.called
     handler.send.assert_called_with(callback='xxx', data=12345, client=None, _time=ANY)
 
+
 def test_handle_message_remote_subscribe(handler, ws):
     message = {'method': 'remote.method', 'client': 'xxx', 'params': [1, 2]}
     handler.handle_message(message)
     ws.subscribe.assert_called_with(ANY, 'remote.method', 1, 2)
     assert not ws.call.called
     assert not handler.send.called
+
+
+def test_skip_send_if_closed(monkeypatch, wsd):
+    wsd.send()
+    monkeypatch.setattr(WebSocketDispatcher, 'is_closed', True)
+    wsd.send()
+    assert WebSocket.send.call_count == 1

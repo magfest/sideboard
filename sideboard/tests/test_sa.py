@@ -6,14 +6,17 @@ from datetime import datetime
 import pytest
 
 import sqlalchemy
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 from sqlalchemy.types import Boolean, Integer, UnicodeText
-from sqlalchemy.schema import Column, ForeignKey, UniqueConstraint
+from sqlalchemy.schema import Column, CheckConstraint, ForeignKey, MetaData, Table, UniqueConstraint
+from sqlalchemy.sql import case
 
 from sideboard.lib import log, listify
 from sideboard.tests import patch_session
 from sideboard.lib.sa._crud import normalize_query, collect_ancestor_classes
-from sideboard.lib.sa import SessionManager, UUID, JSON, declarative_base, CrudException, crudable, text_length_validation, regex_validation
+from sideboard.lib.sa import check_constraint_naming_convention, crudable, declarative_base, \
+    regex_validation, text_length_validation, CrudException, JSON, SessionManager, UUID
 
 
 @declarative_base
@@ -21,7 +24,7 @@ class Base(object):
     id = Column(UUID(), primary_key=True, default=uuid.uuid4)
 
 
-@crudable(update=['tags','employees'])
+@crudable(update=['tags', 'employees'])
 @text_length_validation('name', 1, 100)
 class User(Base):
     name = Column(UnicodeText(), nullable=False, unique=True)
@@ -111,6 +114,18 @@ class CrudableClass(CrudableMixin, Base):
     def settable_property(self, thing):
         pass
 
+    @hybrid_property
+    def string_and_int_hybrid_property(self):
+        """this is the docstring"""
+        return '{} {}'.format(self.string_model_attr, self.int_model_attr)
+
+    @string_and_int_hybrid_property.expression
+    def string_and_int_hybrid_property(cls):
+        return case([
+            (cls.string_model_attr == None, ''),
+            (cls.int_model_attr == None, '')
+        ], else_=(cls.string_model_attr + ' ' + cls.int_model_attr))
+
     @property
     def unsettable_property(self):
         """
@@ -164,7 +179,8 @@ def query_from(obj, attr='id'):
 
 @pytest.fixture(scope='module')
 def init_db(request):
-    class db: pass
+    class db:
+        pass
     patch_session(Session, request)
     db.turner = create('User', name='Turner')
     db.hooch = create('User', name='Hooch')
@@ -185,6 +201,55 @@ def db(request, init_db):
     return init_db
 
 
+class TestNamingConventions(object):
+
+    @pytest.mark.parametrize('sqltext,expected', [
+        ('failed_logins >= 3', 'failed_logins_ge_3'),
+        ('failed_logins > 3', 'failed_logins_gt_3'),
+        ('   failed_logins   =   3   ', 'failed_logins_eq_3'),
+        ('0123456789012345678901234567890123', '1e4008bc148c5486a3c92b2377fa1c45')
+    ])
+    def test_check_constraint_naming_convention(self, sqltext, expected):
+        check_constraint = CheckConstraint(sqltext)
+        table = Table('account', MetaData())
+        result = check_constraint_naming_convention(check_constraint, table)
+        assert result == expected
+
+
+class TestDeclarativeBaseConstructor(object):
+    def test_default_init(self):
+        assert User().id  # default is applied at initialization instead of on save
+
+    def test_overriden_init(self):
+        @declarative_base
+        class WithOverriddenInit(object):
+            id = Column(UUID(), primary_key=True, default=uuid.uuid4)
+
+            def __init__(self, **kwargs):
+                self.__dict__.update(kwargs)
+
+        class Foo(WithOverriddenInit):
+            bar = Column(Boolean())
+
+        assert Foo().id is None
+
+    def test_declarative_base_without_parameters(self):
+
+        @declarative_base
+        class BaseTest:
+            pass
+
+        assert BaseTest.__tablename__ == 'base_test'
+
+    def test_declarative_base_with_parameters(self):
+
+        @declarative_base(name=str('NameOverride'))
+        class BaseTest:
+            pass
+
+        assert BaseTest.__tablename__ == 'name_override'
+
+
 class TestCrudCount(object):
     def assert_counts(self, query, **expected):
         actual = {count['_label']: count['count'] for count in Session.crud.count(query)}
@@ -194,15 +259,15 @@ class TestCrudCount(object):
 
     def test_subquery(self):
         results = Session.crud.count({
-            '_model' : 'Tag',
-            'groupby' : ['name'],
-            'field' : 'user_id',
-            'comparison' : 'in',
-            'value' : {
-                '_model' : 'User',
-                'select' : 'id',
-                'field' : 'name',
-                'value' : 'Turner'
+            '_model': 'Tag',
+            'groupby': ['name'],
+            'field': 'user_id',
+            'comparison': 'in',
+            'value': {
+                '_model': 'User',
+                'select': 'id',
+                'field': 'name',
+                'value': 'Turner'
             }
         })
         expected = {
@@ -214,19 +279,19 @@ class TestCrudCount(object):
 
     def test_compound_subquery(self):
         query = {
-            '_model' : 'Tag',
-            'groupby' : ['name'],
-            'field' : 'user_id',
-            'comparison' : 'in',
-            'value' : {
-                '_model' : 'User',
-                'select' : 'id',
-                'or' : [{
-                    'field' : 'name',
-                    'value' : 'Turner'
+            '_model': 'Tag',
+            'groupby': ['name'],
+            'field': 'user_id',
+            'comparison': 'in',
+            'value': {
+                '_model': 'User',
+                'select': 'id',
+                'or': [{
+                    'field': 'name',
+                    'value': 'Turner'
                 }, {
-                    'field' : 'name',
-                    'value' : 'Hooch'
+                    'field': 'name',
+                    'value': 'Hooch'
                 }]
             }
         }
@@ -246,14 +311,14 @@ class TestCrudCount(object):
 
         results = Session.crud.count({
             '_model': 'Tag',
-            'distinct' : ['name']
+            'distinct': ['name']
         })
         results[0]['count'] == 3
 
     def test_groupby(self):
         results = Session.crud.count({
             '_model': 'Tag',
-            'groupby' : ['name']
+            'groupby': ['name']
         })
         expected = {
             'Male': 2,
@@ -267,20 +332,20 @@ class TestCrudCount(object):
         self.assert_counts('User', User=2)
 
     def test_single_basic_query_dict(self):
-        self.assert_counts({'_model' : 'User'}, User=2)
+        self.assert_counts({'_model': 'User'}, User=2)
 
     def test_multi_basic_query_string(self):
         self.assert_counts(['User', 'Tag'], User=2, Tag=4)
 
     def test_multi_basic_query_dict(self):
-        self.assert_counts([{'_model' : 'User'}, {'_model' : 'Tag'}], User=2, Tag=4)
+        self.assert_counts([{'_model': 'User'}, {'_model': 'Tag'}], User=2, Tag=4)
 
     def test_single_complex_query(self):
-        self.assert_counts({'_label': 'HoochCount', '_model': 'User', 'field': 'name', 'value' : 'Hooch'}, HoochCount=1)
+        self.assert_counts({'_label': 'HoochCount', '_model': 'User', 'field': 'name', 'value': 'Hooch'}, HoochCount=1)
 
     def test_multi_complex_query(self):
-        self.assert_counts([{'_label': 'HoochCount', '_model': 'User', 'field': 'name', 'value' : 'Hooch'},
-                            {'_label': 'MaleCount', '_model': 'Tag', 'field': 'name', 'value' : 'Male'}],
+        self.assert_counts([{'_label': 'HoochCount', '_model': 'User', 'field': 'name', 'value': 'Hooch'},
+                            {'_label': 'MaleCount', '_model': 'Tag', 'field': 'name', 'value': 'Male'}],
                            HoochCount=1, MaleCount=2)
 
     def test_multi_complex_query_with_same_models(self):
@@ -317,7 +382,23 @@ class TestCrudRead(object):
         actual = Session.crud.read(query, data)
         assert len(expected) == actual['total']
         assert sorted(expected, key=lambda m: m.get('id', m.get('_model'))) \
-           ==  sorted(actual['results'], key=lambda m: m.get('id', m.get('_model')))
+            == sorted(actual['results'], key=lambda m: m.get('id', m.get('_model')))
+
+    def test_to_dict_default_attrs(self):
+        expected = [
+            'bool_attr',
+            'bool_model_attr',
+            'date_attr',
+            'extra_data',
+            'float_attr',
+            'id',
+            'int_attr',
+            'int_model_attr',
+            'mixed_in_attr',
+            'string_attr',
+            'string_model_attr']
+        actual = CrudableClass.to_dict_default_attrs
+        assert sorted(expected) == sorted(actual)
 
     def test_subquery(self):
         results = Session.crud.read({
@@ -362,21 +443,21 @@ class TestCrudRead(object):
         pytest.skip('Query.distinct(*columns) is postgresql-only')
         results = Session.crud.read({
             '_model': 'Tag',
-            'distinct' : ['name']
+            'distinct': ['name']
         })
         assert results['total'] == 3
         assert len(results['results']) == 3
 
         results = Session.crud.read({
             '_model': 'Tag',
-            'distinct' : True
+            'distinct': True
         })
         assert results['total'] == 4
         assert len(results['results']) == 4
 
         results = Session.crud.read({
             '_model': 'Tag',
-            'distinct' : ['name', 'id']
+            'distinct': ['name', 'id']
         })
         assert results['total'] == 4
         assert len(results['results']) == 4
@@ -697,51 +778,51 @@ class TestCrudValidations(object):
 class TestNormalizeQuery(object):
     def test_one_string(self):
         results = normalize_query('Human')
-        assert results == [{'_model':'Human', '_label':'Human'}]
+        assert results == [{'_model': 'Human', '_label': 'Human'}]
 
     def test_one_string_in_a_list(self):
         results = normalize_query(['Human'])
-        assert results == [{'_model':'Human', '_label':'Human'}]
+        assert results == [{'_model': 'Human', '_label': 'Human'}]
 
     def test_two_strings(self):
         results = normalize_query(['Human', 'Proxy'])
-        assert results == [{'_model':'Human', '_label':'Human'}, {'_model':'Proxy', '_label':'Proxy'}]
+        assert results == [{'_model': 'Human', '_label': 'Human'}, {'_model': 'Proxy', '_label': 'Proxy'}]
         results = normalize_query(['Proxy', 'Human'])
-        assert results == [{'_model':'Proxy', '_label':'Proxy'}, {'_model':'Human', '_label':'Human'}]
+        assert results == [{'_model': 'Proxy', '_label': 'Proxy'}, {'_model': 'Human', '_label': 'Human'}]
 
     def test_one_dict(self):
-        results = normalize_query({'_model':'Human'})
-        assert results == [{'_model':'Human'}]
+        results = normalize_query({'_model': 'Human'})
+        assert results == [{'_model': 'Human'}]
 
     def test_one_dict_in_a_list(self):
-        results = normalize_query([{'_model':'Human'}])
-        assert results == [{'_model':'Human'}]
+        results = normalize_query([{'_model': 'Human'}])
+        assert results == [{'_model': 'Human'}]
 
     def test_two_dicts(self):
-        results = normalize_query([{'_model':'Human'}, {'_model':'Proxy'}])
-        assert results == [{'_model':'Human'}, {'_model':'Proxy'}]
-        results = normalize_query([{'_model':'Proxy'}, {'_model':'Human'}])
-        assert results == [{'_model':'Proxy'}, {'_model':'Human'}]
+        results = normalize_query([{'_model': 'Human'}, {'_model': 'Proxy'}])
+        assert results == [{'_model': 'Human'}, {'_model': 'Proxy'}]
+        results = normalize_query([{'_model': 'Proxy'}, {'_model': 'Human'}])
+        assert results == [{'_model': 'Proxy'}, {'_model': 'Human'}]
 
     def test_or_clause(self):
-        results = normalize_query([{'_model':'Human', 'or':[{'_model':'Human', 'field':'nickname', 'value':'Johnny'}, {'_model':'Human', 'field':'nickname', 'value':'Winny'}]}, {'_model':'Proxy'}])
-        assert results == [{'_model':'Human', 'or':[{'_model':'Human', 'field':'nickname', 'value':'Johnny'}, {'_model':'Human', 'field':'nickname', 'value':'Winny'}]}, {'_model':'Proxy'}]
+        results = normalize_query([{'_model': 'Human', 'or': [{'_model': 'Human', 'field': 'nickname', 'value': 'Johnny'}, {'_model': 'Human', 'field': 'nickname', 'value': 'Winny'}]}, {'_model': 'Proxy'}])
+        assert results == [{'_model': 'Human', 'or': [{'_model': 'Human', 'field': 'nickname', 'value': 'Johnny'}, {'_model': 'Human', 'field': 'nickname', 'value': 'Winny'}]}, {'_model': 'Proxy'}]
 
     def test_and_clause_push_down_supermodel(self):
-        results = normalize_query([{'_model':'Human', 'or':[{'field':'nickname', 'value':'Johnny'}, {'field':'nickname', 'value':'Winny'}]}, {'_model':'Proxy'}])
-        assert results == [{'_model':'Human', 'or':[{'_model':'Human', 'field':'nickname', 'value':'Johnny'}, {'_model':'Human', 'field':'nickname', 'value':'Winny'}]}, {'_model':'Proxy'}]
+        results = normalize_query([{'_model': 'Human', 'or': [{'field': 'nickname', 'value': 'Johnny'}, {'field': 'nickname', 'value': 'Winny'}]}, {'_model': 'Proxy'}])
+        assert results == [{'_model': 'Human', 'or': [{'_model': 'Human', 'field': 'nickname', 'value': 'Johnny'}, {'_model': 'Human', 'field': 'nickname', 'value': 'Winny'}]}, {'_model': 'Proxy'}]
 
     def test_or_clause_no_model(self):
-        results = normalize_query([{'or':[{'_model':'Human'}, {'_model':'Human', 'field':'nickname', 'value':'Johnny'}]}, {'_model':'Proxy'}])
-        assert results == [{'_model':'Human', 'or':[{'_model':'Human'}, {'_model':'Human', 'field':'nickname', 'value':'Johnny'}]}, {'_model':'Proxy'}]
+        results = normalize_query([{'or': [{'_model': 'Human'}, {'_model': 'Human', 'field': 'nickname', 'value': 'Johnny'}]}, {'_model': 'Proxy'}])
+        assert results == [{'_model': 'Human', 'or': [{'_model': 'Human'}, {'_model': 'Human', 'field': 'nickname', 'value': 'Johnny'}]}, {'_model': 'Proxy'}]
 
     def test_and_clause(self):
-        results = normalize_query([{'_model':'Human', 'and':[{'_model':'Human', 'field':'nickname', 'value':'Johnny'}, {'_model':'Human', 'field':'nickname', 'value':'Winny'}]}, {'_model':'Proxy'}])
-        assert results == [{'_model':'Human', 'and':[{'_model':'Human', 'field':'nickname', 'value':'Johnny'}, {'_model':'Human', 'field':'nickname', 'value':'Winny'}]}, {'_model':'Proxy'}]
+        results = normalize_query([{'_model': 'Human', 'and': [{'_model': 'Human', 'field': 'nickname', 'value': 'Johnny'}, {'_model': 'Human', 'field': 'nickname', 'value': 'Winny'}]}, {'_model': 'Proxy'}])
+        assert results == [{'_model': 'Human', 'and': [{'_model': 'Human', 'field': 'nickname', 'value': 'Johnny'}, {'_model': 'Human', 'field': 'nickname', 'value': 'Winny'}]}, {'_model': 'Proxy'}]
 
     def test_and_clause_no_model(self):
-        results = normalize_query([{'and':[{'_model':'Human'}, {'_model':'Human', 'field':'nickname', 'value':'Johnny'}]}, {'_model':'Proxy'}])
-        assert results == [{'_model':'Human', 'and':[{'_model':'Human'}, {'_model':'Human', 'field':'nickname', 'value':'Johnny'}]}, {'_model':'Proxy'}]
+        results = normalize_query([{'and': [{'_model': 'Human'}, {'_model': 'Human', 'field': 'nickname', 'value': 'Johnny'}]}, {'_model': 'Proxy'}])
+        assert results == [{'_model': 'Human', 'and': [{'_model': 'Human'}, {'_model': 'Human', 'field': 'nickname', 'value': 'Johnny'}]}, {'_model': 'Proxy'}]
 
     def test_fails_or_clause_list_of_lists(self):
         pytest.raises(ValueError, normalize_query, [{'or': [[], []]}, {'_model': 'Proxy', '_label': 'Proxy'}])
@@ -756,31 +837,31 @@ class TestNormalizeQuery(object):
         pytest.raises(ValueError, normalize_query, {})
 
     def test_fails_one_dict_no_model(self):
-        pytest.raises(ValueError, normalize_query, {'field':'nickname', 'value':'Johnny'})
+        pytest.raises(ValueError, normalize_query, {'field': 'nickname', 'value': 'Johnny'})
 
     def test_fails_one_empty_dict_in_a_list(self):
         pytest.raises(ValueError, normalize_query, [{}])
 
     def test_fails_one_dict_no_model_in_a_list(self):
-        pytest.raises(ValueError, normalize_query, [{'field':'nickname', 'value':'Johnny'}])
+        pytest.raises(ValueError, normalize_query, [{'field': 'nickname', 'value': 'Johnny'}])
 
     def test_fails_two_dicts_one_without_model(self):
-        pytest.raises(ValueError, normalize_query, [{'_model':'Proxy'}, {'field':'nickname', 'value':'Johnny'}])
+        pytest.raises(ValueError, normalize_query, [{'_model': 'Proxy'}, {'field': 'nickname', 'value': 'Johnny'}])
 
     def test_fails_and_clause_no_model(self):
-        pytest.raises(ValueError, normalize_query, [{'and':[{'field':'nickname', 'value':'Johnny'}, {'field':'nickname', 'value':'Winny'}]}, {'_model':'Proxy'}])
+        pytest.raises(ValueError, normalize_query, [{'and': [{'field': 'nickname', 'value': 'Johnny'}, {'field': 'nickname', 'value': 'Winny'}]}, {'_model': 'Proxy'}])
 
     def test_fails_or_clause_no_model(self):
-        pytest.raises(ValueError, normalize_query, [{'or':[{'field':'nickname', 'value':'Johnny'}, {'field':'nickname', 'value':'Winny'}]}, {'_model':'Proxy'}])
+        pytest.raises(ValueError, normalize_query, [{'or': [{'field': 'nickname', 'value': 'Johnny'}, {'field': 'nickname', 'value': 'Winny'}]}, {'_model': 'Proxy'}])
 
     def test_fails_and_clause_list_of_lists(self):
-        pytest.raises(ValueError, normalize_query, [{'and':[[], []]}, {'_model':'Proxy'}])
+        pytest.raises(ValueError, normalize_query, [{'and': [[], []]}, {'_model': 'Proxy'}])
 
     def test_fails_and_clause_with_model_list_of_lists(self):
-        pytest.raises(ValueError, normalize_query, [{'_model':'Human', 'and':[[], []]}, {'_model':'Proxy'}])
+        pytest.raises(ValueError, normalize_query, [{'_model': 'Human', 'and': [[], []]}, {'_model': 'Proxy'}])
 
     def test_fails_or_clause_with_model_list_of_lists(self):
-        pytest.raises(ValueError, normalize_query, [{'_model':'Human', 'or':[[], []]}, {'_model':'Proxy'}])
+        pytest.raises(ValueError, normalize_query, [{'_model': 'Human', 'or': [[], []]}, {'_model': 'Proxy'}])
 
 
 class TestCollectModels(object):
@@ -952,7 +1033,7 @@ class TestCrudableClass(object):
         assert self.expected_crud_spec == CrudableClass._crud_spec
 
     def test_basic_crud_spec(self):
-        expected_basic = {'fields': {k: self.expected_crud_spec['fields'][k] 
+        expected_basic = {'fields': {k: self.expected_crud_spec['fields'][k]
                                      for k in ('id', 'mixed_in_attr', 'extra_data')}}
         assert expected_basic == BasicClassMixedIn._crud_spec
 

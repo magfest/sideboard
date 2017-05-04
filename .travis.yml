@@ -1,16 +1,27 @@
 language: python
-python: 2.7
-env:
-  - TOX_ENV=py27
-  - TOX_ENV=py33
-  - TOX_ENV=py34
+matrix:
+  include:
+    - python: "2.7"
+      env: TOX_ENV=pep8
+    - python: "2.7"
+      env: TOX_ENV=py27
+    - python: "3.3"
+      env: TOX_ENV=py33
+    - python: "3.4"
+      env: TOX_ENV=py34
+    - python: "3.5"
+      env: TOX_ENV=py35
 before_install:
   - sudo apt-get -qq update
   - sudo apt-get install -y build-essential libcap-dev
 install:
   - pip install tox
-  - pip install python-coveralls
+  - if [[ $TOX_ENV == py27 ]] || [[ $TOX_ENV == py35 ]]; then
+      pip install coveralls;
+    fi
 script:
   - tox -e $TOX_ENV
 after_success:
-  coveralls
+  - if [[ $TOX_ENV == py27 ]] || [[ $TOX_ENV == py35 ]]; then
+      coveralls;
+    fi

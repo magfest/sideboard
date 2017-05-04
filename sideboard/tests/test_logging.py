@@ -18,4 +18,3 @@ class LoggerSetupTest(unittest.TestCase):
         dummy_logger = self._logger('dummy', stream)
         dummy_logger.warning('do not break dummy logger')
         assert stream.getvalue() == 'do not break dummy logger\n'
-

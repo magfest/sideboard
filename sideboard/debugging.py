@@ -1,3 +1,4 @@
+from __future__ import unicode_literals
 import os
 
 # create a list of status functions which can inspect information of the running process
@@ -46,5 +47,3 @@ def debugger_helpers_all_init():
     DO NOT CALL THIS IN PRODUCTION.
     """
     _debugger_helper_remove_any_session_lockfiles()
-
-

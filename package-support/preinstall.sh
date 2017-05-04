@@ -1,8 +1,5 @@
-if ! id -u sideboard &>/dev/null; then
-    adduser sideboard
-fi
 
-for dname in /var/run/sideboard /var/tmp/sideboard/sessions /opt/sideboard/db /opt/sideboard/plugins; do
-    mkdir -p $dname
-    chown sideboard.sideboard $dname
-done
+if ! id -u sideboard &>/dev/null; then
+    groupadd --force -r sideboard -g 600
+    useradd -r --shell /sbin/nologin  -uid 600 --gid sideboard sideboard
+fi

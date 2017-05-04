@@ -1,9 +1,9 @@
-<!doctype html>
+{% raw %}<!doctype html>
 <html>
-    <head><title>$(( plugin ))$ skeleton page</title></head>
+    <head><title>{{ plugin }} skeleton page</title></head>
     <body>
-        ((% if header %))
-            <h1>Hello $(( plugin ))$ developer!</h1>
-        ((% endif %))
+        {% if header %}
+            <h1>Hello {{ plugin }} developer!</h1>
+        {% endif %}
     </body>
-</html>
+</html>{% endraw%}

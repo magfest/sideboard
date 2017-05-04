@@ -1,0 +1,6 @@
+# defaults for sideboard package
+# SIDEBOARDMODE=server
+SIDEBOARDMODE=daemon
+
+# DESC=sideboard
+DESC=sideboard-daemon
