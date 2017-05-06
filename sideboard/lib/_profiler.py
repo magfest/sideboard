@@ -31,7 +31,8 @@ But any regular function can be profiled using the @profile decorator::
 
     from sideboard.lib import profile
 
-    def some_long_running_function():
+    @profile
+    def some_interesting_function():
        # Do some stuff
 
 
@@ -78,11 +79,12 @@ def cleanup_profiler():
     """
     Deletes all `*.prof` files in the profiler's data directory.
 
-    Exposed as a `sep` command::
+    This is useful when you've created tons of profile files that you're no
+    longer interested in. Exposed as a `sep` command::
 
         $ sep cleanup_profiler
 
-    The profiler directory is specified by::
+    The profiler directory is specified in the config by::
 
         [cherrypy]
         profiling.path = 'path/to/profile/data'
