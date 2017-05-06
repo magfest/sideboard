@@ -173,9 +173,9 @@ orig_mount = cherrypy.tree.mount
 cherrypy.tree.mount = mount
 cherrypy.tree.mount(Root(), '', app_config)
 
-if cherrypy.config['profiling.on']:
+if config['cherrypy']['profiling.on']:
     # If profiling is turned on then expose the web UI, otherwise ignore it.
     from sideboard.lib import Profiler
-    cherrypy.tree.mount(Profiler(cherrypy.config['profiling.path']), '/profiler')
+    cherrypy.tree.mount(Profiler(config['cherrypy']['profiling.path']), '/profiler')
 
 sys.modules.pop('six.moves.winreg', None)  # kludgy workaround for CherryPy's autoreloader erroring on winreg for versions which have this
