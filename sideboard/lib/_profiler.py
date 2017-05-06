@@ -1,7 +1,49 @@
 """
-cherrypy.lib.profiler.py
-https://github.com/cherrypy/cherrypy/blob/master/cherrypy/lib/profiler.py
-http://docs.cherrypy.org/en/latest/pkg/cherrypy.lib.html#module-cherrypy.lib.profiler
+Adds profiling tools and a web interface for viewing profiling results.
+
+The Sideboard profiler borrows heavily from the `CherryPy profiler
+<https://github.com/cherrypy/cherrypy/blob/master/cherrypy/lib/profiler.py>`_,
+but with a few added features and nicer formatting.
+
+ * Adds the ability to sort results by different columns.
+ * Adds the ability to cleanup profile data files.
+ * Uses a better naming scheme for profile data files.
+ * Uses `cProfile` instead of `profile` for better performance.
+
+Profiling data can be collected using the @profile decorator on functions and
+methods. The profiling results can be viewed at http://servername/profile/.
+
+Good candidates for profiling are the outermost functions that generate your
+web pages, usually exposed as cherrypy endpoints via @cherrypy.expose::
+
+    import cherrypy
+    from sideboard.lib import profile
+
+    class Root(object):
+        @cherrypy.expose
+        @profile
+        def index(self):
+            # Create and return the index page
+            return '<html/>'
+
+
+But any regular function can be profiled using the @profile decorator::
+
+    from sideboard.lib import profile
+
+    def some_long_running_function():
+       # Do some stuff
+
+
+The following config options control how the profiler operates, see
+configspec.ini for more details::
+
+    [cherrypy]
+    profiling.on = boolean(default=True)
+    profiling.path = string(default="%(root)s/data/profiler")
+    profiling.aggregate = boolean(default=False)
+    profiling.strip_dirs = boolean(default=False)
+
 """
 import io
 import os
@@ -17,11 +59,11 @@ from sideboard.config import config
 from sideboard.lib import entry_point, listify
 
 
-_count = 0
-
-
 def _new_func_strip_path(func_name):
-    """Make profiler output more readable by adding `__init__` modules' parents
+    """
+    Adds the parent module to profiler output for `__init__.py` files.
+
+    Copied verbatim from cherrypy/lib/profiler.py.
     """
     filename, line, name = func_name
     if filename.endswith('__init__.py'):
@@ -33,6 +75,19 @@ pstats.func_strip_path = _new_func_strip_path
 
 @entry_point
 def cleanup_profiler():
+    """
+    Deletes all `*.prof` files in the profiler's data directory.
+
+    Exposed as a `sep` command::
+
+        $ sep cleanup_profiler
+
+    The profiler directory is specified by::
+
+        [cherrypy]
+        profiling.path = 'path/to/profile/data'
+
+    """
     profiling_path = config['cherrypy'].get('profiling.path', None)
     if profiling_path:
         for f in glob(os.path.join(profiling_path, '*.prof')):
@@ -40,6 +95,28 @@ def cleanup_profiler():
 
 
 def profile(func):
+    """
+    Decorator to capture profile data from a method or function.
+
+    If profiling is disabled then this decorator is a no-op, and the original
+    function is returned unmodified. Since the original function is returned,
+    this decorator does not incur any performance penalty if profiling is
+    disabled. To enable or disable profiling use the following setting in your
+    config::
+
+            [cherrypy]
+            profiling.on = 'True'  # Or 'False' to disable
+
+    Args:
+        func (function): The function to profile.
+
+    Returns:
+        function: Either a wrapped version of `func` with profiling enabled,
+            or `func` itself if profiling is disabled.
+
+    See Also:
+        configspec.ini
+    """
     if config['cherrypy'].get('profiling.on', False):
         profiling_path = config['cherrypy'].get('profiling.path', None)
         if config['cherrypy'].get('profiling.aggregate', False):
@@ -56,6 +133,13 @@ def profile(func):
 
 
 class Profiler(object):
+    """
+    Mostly copied from cherrypy/lib/profiler.py.
+
+     * Adds the ability to sort results by different columns.
+     * Adds the ability to cleanup profile data files.
+     * Uses a better naming scheme for profile data files.
+    """
 
     # https://docs.python.org/3/library/profile.html#pstats.Stats.sort_stats
     sort_fields = [
@@ -76,15 +160,14 @@ class Profiler(object):
         if not os.path.exists(path):
             os.makedirs(path)
 
-    def new_filename(self):
+    def new_filename(self, func):
         date = datetime.now().strftime("%Y-%m-%d_%H:%M:%S.%f")
-        return '{}_{}.prof'.format(date, _count)
+        name = func.__name__ if func.__name__ else 'unknown'
+        return '{}_{}.prof'.format(date, name)
 
     def run(self, func, *args, **params):
         """Dump profile data into self.path."""
-        global _count
-        c = _count = _count + 1
-        path = os.path.join(self.path, self.new_filename())
+        path = os.path.join(self.path, self.new_filename(func))
         prof = cProfile.Profile()
         result = prof.runcall(func, *args, **params)
         prof.dump_stats(path)
@@ -110,27 +193,28 @@ class Profiler(object):
 
     @cherrypy.expose
     def index(self):
-        return """<html>
+        return '''<html>
         <head><title>Sideboard Profiler</title></head>
-        <frameset cols='280, 1*'>
-            <frame src='menu' />
-            <frame name='main' src='' />
+        <frameset cols="300, 1*">
+            <frame src="menu"/>
+            <frame name="main" src="" />
         </frameset>
         </html>
-        """
+        '''
 
     @cherrypy.expose
     def menu(self):
         yield '<h2>Profiling Runs</h2>'
         runs = self.statfiles()
         if not runs:
-            yield "<p>No profiling runs</p>"
+            yield 'No profiling runs'
         else:
+            yield '<div style="white-space: nowrap;">'
             runs.sort()
             for run in runs:
                 yield '<a href="report?filename={0}" target="main">{0}</a>' \
                     '<br>'.format(run)
-            yield '<br><hr><br>'
+            yield '</div><br><hr><br>'
             yield '<a href="cleanup" target="_top">' \
                 'Delete all profiling runs</a>'
 
@@ -149,20 +233,37 @@ class Profiler(object):
 
     @cherrypy.expose
     def cleanup(self):
+        """
+        Deletes all `*.prof` files in the profiler's data directory.
+
+        To delete all profile data files hit
+        http://servername/profile/cleanup/.
+
+        The profiler directory is specified by::
+
+            [cherrypy]
+            profiling.path = 'path/to/profile/data'
+
+        See Also:
+            `cleanup_profiler`
+        """
         cleanup_profiler()
         raise cherrypy.HTTPRedirect('.')
 
 
 class ProfileAggregator(Profiler):
+    """
+    Mostly copied from cherrypy/lib/profiler.py.
+
+     * Uses a better naming scheme for profile data files.
+    """
 
     def __init__(self, path=None):
         super(ProfileAggregator, self).__init__(path)
-        global _count
-        self.count = _count = _count + 1
         self.profiler = cProfile.Profile()
 
     def run(self, func, *args, **params):
-        path = os.path.join(self.path, self.new_filename())
+        path = os.path.join(self.path, self.new_filename(func))
         result = self.profiler.runcall(func, *args, **params)
         self.profiler.dump_stats(path)
         return result

@@ -173,8 +173,8 @@ orig_mount = cherrypy.tree.mount
 cherrypy.tree.mount = mount
 cherrypy.tree.mount(Root(), '', app_config)
 
-
 if cherrypy.config['profiling.on']:
+    # If profiling is turned on then expose the web UI, otherwise ignore it.
     from sideboard.lib import Profiler
     cherrypy.tree.mount(Profiler(cherrypy.config['profiling.path']), '/profiler')
 
