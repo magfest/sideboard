@@ -40,10 +40,10 @@ The following config options control how the profiler operates, see
 configspec.ini for more details::
 
     [cherrypy]
-    profiling.on = boolean(default=True)
-    profiling.path = string(default="%(root)s/data/profiler")
-    profiling.aggregate = boolean(default=False)
-    profiling.strip_dirs = boolean(default=False)
+    profiling.on = True
+    profiling.path = "%(root)s/data/profiler"
+    profiling.aggregate = False
+    profiling.strip_dirs = False
 
 """
 import io
@@ -56,8 +56,7 @@ from functools import wraps
 from glob import glob
 
 import cherrypy
-from sideboard.config import config
-from sideboard.lib import entry_point, listify
+from sideboard.lib import config, entry_point, listify
 
 
 def _new_func_strip_path(func_name):
@@ -90,10 +89,9 @@ def cleanup_profiler():
         profiling.path = 'path/to/profile/data'
 
     """
-    profiling_path = config['cherrypy'].get('profiling.path', None)
-    if profiling_path:
-        for f in glob(os.path.join(profiling_path, '*.prof')):
-            os.remove(f)
+    profiling_path = config['cherrypy']['profiling.path']
+    for f in glob(os.path.join(profiling_path, '*.prof')):
+        os.remove(f)
 
 
 def profile(func):
@@ -106,8 +104,8 @@ def profile(func):
     disabled. To enable or disable profiling use the following setting in your
     config::
 
-            [cherrypy]
-            profiling.on = 'True'  # Or 'False' to disable
+        [cherrypy]
+        profiling.on = True  # Or False to disable
 
     Args:
         func (function): The function to profile.
@@ -119,9 +117,9 @@ def profile(func):
     See Also:
         configspec.ini
     """
-    if config['cherrypy'].get('profiling.on', False):
-        profiling_path = config['cherrypy'].get('profiling.path', None)
-        if config['cherrypy'].get('profiling.aggregate', False):
+    if config['cherrypy']['profiling.on']:
+        profiling_path = config['cherrypy']['profiling.path']
+        if config['cherrypy']['profiling.aggregate']:
             p = ProfileAggregator(profiling_path)
         else:
             p = Profiler(profiling_path)
@@ -155,9 +153,7 @@ class Profiler(object):
         ('stdname', 'Standard Name'),
         ('tottime', 'Total Time')]
 
-    def __init__(self, path=None):
-        if not path:
-            path = os.path.join(os.path.dirname(__file__), 'profile')
+    def __init__(self, path=config['cherrypy']['profiling.path']):
         self.path = path
         if not os.path.exists(path):
             os.makedirs(path)
@@ -185,7 +181,7 @@ class Profiler(object):
         """
         sio = io.StringIO()
         s = pstats.Stats(os.path.join(self.path, filename), stream=sio)
-        if config['cherrypy'].get('profiling.strip_dirs', False):
+        if config['cherrypy']['profiling.strip_dirs']:
             s.strip_dirs()
         s.sort_stats(sortby)
         s.print_stats()

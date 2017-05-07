@@ -73,8 +73,8 @@ class TestSideboardGetConfigFiles(object):
 
     @pytest.fixture
     def plugin_dirs(self):
-        module_path = '/fake/sideboard/test_plugins/test-plugin/test_plugin'
-        root_path = os.path.join(os.getcwd(), 'test_plugins', 'test-plugin')
+        module_path = '/fake/sideboard/does_not_exist/test-plugin/test_plugin'
+        root_path = os.path.join(os.getcwd(), 'does_not_exist', 'test-plugin')
         return (module_path, root_path)
 
     @pytest.fixture
