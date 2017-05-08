@@ -15,6 +15,7 @@ sideboard/docs
 plugins/*
 !plugins/conftest.py
 data/sessions/*
+data/profiler/*
 *-bootstrap.py
 data/*.db
 .tox
