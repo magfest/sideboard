@@ -5,8 +5,7 @@ import pytest
 from mock import Mock
 
 from sideboard.lib import config
-from sideboard.config import get_config_files, get_config_overrides, \
-    get_config_root, get_module_and_root_dirs, parse_config, uniquify
+from sideboard.config import get_config_files, get_config_overrides, get_config_root, get_module_and_root_dirs, parse_config, uniquify
 
 
 def test_uniquify():
@@ -93,7 +92,6 @@ class TestSideboardGetConfigFiles(object):
             os.path.join(sideboard_dirs[0], 'config.py'), is_plugin=False)
 
     def test_get_config_files_plugin(self, plugin_dirs, config_overrides_unset):
-
         expected = [
             '/etc/sideboard/plugins.d/test-plugin.cfg',
             os.path.join(plugin_dirs[1], 'development-defaults.ini'),
@@ -102,7 +100,6 @@ class TestSideboardGetConfigFiles(object):
             os.path.join(plugin_dirs[0], 'config.py'), is_plugin=True)
 
     def test_get_config_files_sideboard(self, sideboard_dirs, config_overrides_unset):
-
         expected = [
             '/etc/sideboard/sideboard-core.cfg',
             '/etc/sideboard/sideboard-server.cfg',
@@ -112,7 +109,6 @@ class TestSideboardGetConfigFiles(object):
             os.path.join(sideboard_dirs[0], 'config.py'), is_plugin=False)
 
     def test_get_config_files_plugin_with_overrides(self, plugin_dirs, config_overrides_set):
-
         expected = [
             '/etc/sideboard/plugins.d/test-plugin.cfg',
             os.path.join(plugin_dirs[1], 'test-defaults.ini'),
@@ -121,7 +117,6 @@ class TestSideboardGetConfigFiles(object):
             os.path.join(plugin_dirs[0], 'config.py'), is_plugin=True)
 
     def test_get_config_files_sideboard_with_overrides(self, sideboard_dirs, config_overrides_set):
-
         expected = [
             '/etc/sideboard/sideboard-core.cfg',
             '/etc/sideboard/sideboard-server.cfg',

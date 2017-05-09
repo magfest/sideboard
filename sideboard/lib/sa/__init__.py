@@ -143,7 +143,54 @@ else:
     __all__.append('UTCDateTime')
 
 
-def declarative_base(klass):
+def check_constraint_naming_convention(constraint, table):
+    """Creates a unique name for an unnamed CheckConstraint.
+
+    The generated name is the SQL text of the CheckConstraint with
+    non-alphanumeric, non-underscore operators converted to text, and all
+    other non-alphanumeric, non-underscore substrings replaced by underscores.
+
+    If the generated name is longer than 32 characters, a uuid5 based on the
+    generated name will be returned instead.
+
+    >>> check_constraint_naming_convention(CheckConstraint('failed_logins > 3'), Table('account', MetaData()))
+    'failed_logins_gt_3'
+
+    See: http://docs.sqlalchemy.org/en/latest/core/constraints.html#configuring-constraint-naming-conventions
+    """
+    # The text of the replacements doesn't matter, so long as it's unique
+    replacements = [
+        ('||/', 'cr'), ('<=', 'le'), ('>=', 'ge'), ('<>', 'nq'), ('!=', 'ne'),
+        ('||', 'ct'), ('<<', 'ls'), ('>>', 'rs'), ('!!', 'fa'), ('|/', 'sr'),
+        ('@>', 'cn'), ('<@', 'cb'), ('&&', 'an'), ('<', 'lt'), ('=', 'eq'),
+        ('>', 'gt'), ('!', 'ex'), ('"', 'qt'), ('#', 'hs'), ('$', 'dl'),
+        ('%', 'pc'), ('&', 'am'), ('\'', 'ap'), ('(', 'lpr'), (')', 'rpr'),
+        ('*', 'as'), ('+', 'pl'), (',', 'cm'), ('-', 'da'), ('.', 'pd'),
+        ('/', 'sl'), (':', 'co'), (';', 'sc'), ('?', 'qn'), ('@', 'at'),
+        ('[', 'lbk'), ('\\', 'bs'), (']', 'rbk'), ('^', 'ca'), ('`', 'tk'),
+        ('{', 'lbc'), ('|', 'pi'), ('}', 'rbc'), ('~', 'td')]
+
+    constraint_name = str(constraint.sqltext).strip()
+    for operator, text in replacements:
+        constraint_name = constraint_name.replace(operator, text)
+
+    constraint_name = re.sub('[\W\s]+', '_', constraint_name)
+    if len(constraint_name) > 32:
+        constraint_name = uuid.uuid5(uuid.NAMESPACE_OID, str(constraint_name)).hex
+    return constraint_name
+
+
+# SQLAlchemy doesn't expose its default constructor as a nicely importable
+# function, so we grab it from the function defaults.
+if six.PY2:
+    _spec_args, _spec_varargs, _spec_kwargs, _spec_defaults = inspect.getargspec(declarative.declarative_base)
+else:
+    _declarative_spec = inspect.getfullargspec(declarative.declarative_base)
+    _spec_args, _spec_defaults = _declarative_spec.args, _declarative_spec.defaults
+declarative_base_constructor = dict(zip(reversed(_spec_args), reversed(_spec_defaults)))['constructor']
+
+
+def declarative_base(*orig_args, **orig_kwargs):
     """
     Replacement for SQLAlchemy's declarative_base, which adds these features:
     1) This is a decorator.
@@ -153,32 +200,43 @@ def declarative_base(klass):
     4) Automatically setting __tablename__ to snake-case.
     5) Automatic integration with the SessionManager class.
     """
-    # SQLAlchemy doesn't expose its default constructor as a nicely importable function, so we grab it from the function defaults
-    if six.PY2:
-        spec_args, spec_varargs, spec_kwargs, spec_defaults = inspect.getargspec(declarative.declarative_base)
+    orig_args = list(orig_args)
+
+    def _decorate_base_class(klass):
+
+        class Mixed(klass, CrudMixin):
+            def __init__(self, *args, **kwargs):
+                """
+                Variant on SQLAlchemy model __init__ which sets default values on
+                initialization instead of immediately before the model is saved.
+                """
+                if '_model' in kwargs:
+                    assert kwargs.pop('_model') == self.__class__.__name__
+                declarative_base_constructor(self, *args, **kwargs)
+                for attr, col in self.__table__.columns.items():
+                    if col.default:
+                        self.__dict__.setdefault(attr, col.default.execute())
+
+        orig_kwargs['cls'] = Mixed
+        if 'name' not in orig_kwargs:
+            orig_kwargs['name'] = klass.__name__
+        if 'constructor' not in orig_kwargs:
+            orig_kwargs['constructor'] = klass.__init__ if '__init__' in klass.__dict__ else Mixed.__init__
+
+        Mixed = declarative.declarative_base(*orig_args, **orig_kwargs)
+        Mixed.BaseClass = _SessionInitializer._base_classes[klass.__module__] = Mixed
+        Mixed.__tablename__ = declarative.declared_attr(lambda cls: _camelcase_to_underscore(cls.__name__))
+        return Mixed
+
+    is_class_decorator = not orig_kwargs and \
+            len(orig_args) == 1 and \
+            inspect.isclass(orig_args[0]) and \
+            not isinstance(orig_args[0], sqlalchemy.engine.Connectable)
+
+    if is_class_decorator:
+        return _decorate_base_class(orig_args.pop())
     else:
-        declarative_spec = inspect.getfullargspec(declarative.declarative_base)
-        spec_args, spec_defaults = declarative_spec.args, declarative_spec.defaults
-    default_constructor = dict(zip(reversed(spec_args), reversed(spec_defaults)))['constructor']
-
-    class Mixed(klass, CrudMixin):
-        def __init__(self, *args, **kwargs):
-            """
-            Variant on SQLAlchemy model __init__ which sets default values on
-            initialization instead of immediately before the model is saved.
-            """
-            if '_model' in kwargs:
-                assert kwargs.pop('_model') == self.__class__.__name__
-            default_constructor(self, *args, **kwargs)
-            for attr, col in self.__table__.columns.items():
-                if col.default:
-                    self.__dict__.setdefault(attr, col.default.execute())
-
-    constructor = {'constructor': klass.__init__ if '__init__' in klass.__dict__ else Mixed.__init__}
-    Mixed = declarative.declarative_base(cls=Mixed, **constructor)
-    Mixed.BaseClass = _SessionInitializer._base_classes[klass.__module__] = Mixed
-    Mixed.__tablename__ = declarative.declared_attr(lambda cls: _camelcase_to_underscore(cls.__name__))
-    return Mixed
+        return _decorate_base_class
 
 
 class _SessionInitializer(type):
@@ -233,12 +291,13 @@ class SessionManager(object):
             self.session.close()
 
     @classmethod
-    def initialize_db(cls, drop=False):
+    def initialize_db(cls, drop=False, create=True):
         configure_mappers()
         cls.BaseClass.metadata.bind = cls.engine
         if drop:
             cls.BaseClass.metadata.drop_all(cls.engine, checkfirst=True)
-        cls.BaseClass.metadata.create_all(cls.engine, checkfirst=True)
+        if create:
+            cls.BaseClass.metadata.create_all(cls.engine, checkfirst=True)
 
     @classmethod
     def all_models(cls):
@@ -261,7 +320,7 @@ class SessionManager(object):
                     return subclasses[singular]
 
             if name.lower().endswith('ies'):
-                singular = name[:-3] + 'sy'  # TODO: sy looks like a typo, and we need to either make this better or get rid of it
+                singular = name[:-3] + 'y'
                 if singular in subclasses:
                     return subclasses[singular]
 
