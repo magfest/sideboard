@@ -701,13 +701,16 @@ When a function which has been declared to update those channels is called, the 
             return "ok"
 
 
-.. function:: notify(channels)
+.. function:: notify(channels, delay=False)
     
-    Explicitly cause all client listening on those files 
+    Explicitly cause all client listening on the given channel(s) to check for new data.
     
     Unless you have some specific reason to use this function, you should probably just decorate the appropriate function with the ``@notifies`` decorator.
 
+    By default this triggers Sideboard's broadcaster thread to check for new data on the given channel(s) immediately.  However, plugins might find themselves in a situation where they want to trigger a notification after the current RPC method has finished running.  For example, notify() might be called while in the middle of a database transaction and we want to make sure that the transaction has been committed before the ``notify`` occurs.  To support this case, we can set the ``delay`` parameter to ``True``, in which case Sideboard will wait until we finish executing the current RPC method to signal the broadcaster thread.  (If called with a ``delay`` outside of an RPC request, no notify will occur.)
+
     :param channels: a string or list of strings, which are the names of the channels to notify
+    :param delay: boolean indicating whether to fire immediately or at the end of the execution of the current RPC method
 
 
 So in the above examples listed with the ``@subscribes`` and ``@notifies`` decorators, we might see the following sequence of requests and responses:
@@ -1031,7 +1034,7 @@ When we refer to "Sideboard starting" and "Sideboard stopping" we are referring 
 
 .. class:: TimeDelayQueue()
 
-    Subclass of `Queue.Queue <http://docs.python.org/2/library/queue.html#Queue.Queue>`_ which adds an optional ``delay`` parameter to the ``put`` method which does not add the item to the queue until after the specified amount of time.  This is used internally but is included in our public API in case it's useful to anyone else.
+    Subclass of `Queue.Queue <http://docs.python.org/2/library/queue.html#Queue.Queue>`_ which adds an optional ``delay`` parameter to the ``put`` method which does not add the item to the queue until after the specified amount of time.  This is included in our public API in case it's useful, though Sideboard itself no longer makes use of it as part of its internal implementation.
 
     .. method:: put(item[, block=True[, timeout=None[, delay=0]]]):
     
@@ -1043,8 +1046,7 @@ When we refer to "Sideboard starting" and "Sideboard stopping" we are referring 
     Utility class allowing code to call the provided function in a separate pool of threads.  For example, if you need to call a long-running function in the handler for an HTTP request, you might want to just kick off the method in a background thread so that you can return from the page handler immediately.
     
     >>> caller = Caller(long_running_func)
-    >>> caller.defer('arg1', arg2=True)        # called immediately (in another thread)
-    >>> caller.delay(5, 'argOne', arg2=False)  # called after a 5 second delay (in another thread)
+    >>> caller.defer('arg1', arg2=True)  # triggers an immediate call in another thread
 
     :param func: the function to be executed in the background; this must be callable with no arguments
     :param threads: the number of threads which will call this function; sometimes you may want a pool of threads all calling the same function
@@ -1054,20 +1056,15 @@ When we refer to "Sideboard starting" and "Sideboard stopping" we are referring 
     .. method:: defer(*args, **kwargs)
     
         Pass a set of arguments and keyword arguments which will be used to call this instance's function in a background thread.
-    
-    .. method:: delay(seconds, *args, **kwargs)
-    
-        Call this instance's function in a background thread after the specified delay with the passed position and keyword arguments.
 
 
 .. class:: GenericCaller([threads=1])
 
     Like the ``Caller`` class above, except that instead of calling the same method with provided arguments, this lets you spin up a pool of background threads which will call any methods you specify, e.g.
     
-    >>> from __future__ import print_function
+    >>> from __future__ import print_function  # unnecessary in Python 3
     >>> gc = GenericCaller()
-    >>> gc.defer(print, 'Hello', 'World', sep=', ', end='!')     # prints "Hello, World!"
-    >>> gc.delay(5, print, 'Hello', 'World', sep=', ', end='!')  # prints "Hello, World!" after 5 seconds
+    >>> gc.defer(print, 'Hello', 'World', sep=', ', end='!')  # prints "Hello, World!"
 
     :param threads: the number of threads which will call this function; sometimes you may want a pool of threads all calling the same function
 

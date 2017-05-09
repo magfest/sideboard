@@ -4,8 +4,8 @@ import os
 import pytest
 from mock import Mock
 
-from sideboard.config import get_config_files, get_config_overrides, \
-    get_config_root, get_module_and_root_dirs, parse_config, uniquify
+from sideboard.lib import config
+from sideboard.config import get_config_files, get_config_overrides, get_config_root, get_module_and_root_dirs, parse_config, uniquify
 
 
 def test_uniquify():
@@ -74,7 +74,7 @@ class TestSideboardGetConfigFiles(object):
     @pytest.fixture
     def plugin_dirs(self):
         module_path = '/fake/sideboard/plugins/test-plugin/test_plugin'
-        root_path = os.path.join(os.getcwd(), 'plugins', 'test-plugin')
+        root_path = os.path.join(config['plugins_dir'], 'test-plugin')
         return (module_path, root_path)
 
     @pytest.fixture
