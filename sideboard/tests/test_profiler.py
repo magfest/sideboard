@@ -1,3 +1,4 @@
+from __future__ import unicode_literals
 from sideboard.lib import cleanup_profiler, profile
 from sideboard.config import config
 
