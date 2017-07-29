@@ -73,7 +73,7 @@ serializer.register(set, lambda s: sorted(list(s)))
 
 def cached_property(func):
     """decorator for making readonly, memoized properties"""
-    pname = "_" + func.__name__
+    pname = '_cached_{}'.format(func.__name__)
 
     @property
     @wraps(func)

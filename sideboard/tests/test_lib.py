@@ -463,10 +463,10 @@ def test_cached_property():
             return 5
 
     foo = Foo()
-    assert not hasattr(foo, '_bar')
+    assert not hasattr(foo, '_cached_bar')
     assert 5 == foo.bar
-    assert 5 == foo._bar
-    foo._bar = 6
+    assert 5 == foo._cached_bar
+    foo._cached_bar = 6
     assert 6 == foo.bar
     assert 5 == Foo().bar  # per-instance caching
 
