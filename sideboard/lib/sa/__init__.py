@@ -214,7 +214,7 @@ def declarative_base(*orig_args, **orig_kwargs):
                     assert kwargs.pop('_model') == self.__class__.__name__
                 declarative_base_constructor(self, *args, **kwargs)
                 for attr, col in self.__table__.columns.items():
-                    if col.default:
+                    if attr not in kwargs and col.default:
                         self.__dict__.setdefault(attr, col.default.execute())
 
         orig_kwargs['cls'] = Mixed
