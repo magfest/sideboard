@@ -6,6 +6,7 @@ import cherrypy
 from cherrypy.lib.jsontools import json_decode
 
 from sideboard.lib import log, config, serializer
+from sideboard.websockets import trigger_delayed_notifications
 
 
 ERR_INVALID_RPC = -32600
@@ -90,5 +91,7 @@ def _make_jsonrpc_handler(services, debug=config['debug'],
             if debug:
                 message += ': ' + traceback.format_exc()
             return error(ERR_FUNC_EXCEPTION, message)
+        finally:
+            trigger_delayed_notifications()
 
     return jsonrpc_handler

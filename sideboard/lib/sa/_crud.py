@@ -655,7 +655,6 @@ def make_crud_service(Session):
         @staticmethod
         def crud_notifies(func, **settings):
             func = crud_exceptions(func)
-            delay = settings.pop('delay', 0)
 
             class notifier(object):
                 def __call__(self, *args, **kwargs):
@@ -663,7 +662,7 @@ def make_crud_service(Session):
                         return func(*args, **kwargs)
                     finally:
                         models = Crud._get_models(args, kwargs)
-                        notify(models, trigger=func.__name__, delay=delay)
+                        notify(models, trigger=func.__name__)
 
             return wraps(func)(notifier())
 

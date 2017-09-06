@@ -21,6 +21,7 @@ from sideboard.lib import log, class_property, Caller
 from sideboard.config import config
 
 local_subscriptions = defaultdict(list)
+DELAYED_NOTIFICATIONS_KEY = 'sideboard.delayed_notifications'
 
 
 class threadlocal(object):
@@ -152,13 +153,16 @@ def _normalize_channels(*channels):
     return list(set(normalized_channels))
 
 
-def notify(channels, trigger="manual", delay=0, originating_client=None):
+def notify(channels, trigger="manual", delay=False, originating_client=None):
     """
     Manually trigger all subscriptions on the given channels.  The following
     optional parameters may be specified:
 
     trigger: Used in log messages if you want to distinguish between triggers.
-    delay: If provided, wait this many seconds before triggering the broadcast.
+    delay: Boolean indicating whether the notification should happen immediately
+           or after the current WebSocket RPC method has completed.  Note that
+           if this parameter is set when notify is called outside of a WebSocket
+           RPC request, no notification will ever happen.
     originating_client: Websocket subscriptions will NOT fire if they have the
                         same client as the trigger.
     """
@@ -167,8 +171,27 @@ def notify(channels, trigger="manual", delay=0, originating_client=None):
         'trigger': trigger,
         'originating_client': originating_client or threadlocal.get_client()
     }
-    broadcaster.delayed(delay, channels, **context)
-    local_broadcaster.delayed(delay, channels, **context)
+    if delay:
+        threadlocal.setdefault(DELAYED_NOTIFICATIONS_KEY, []).append([channels, context])
+    else:
+        broadcaster.defer(channels, **context)
+        local_broadcaster.defer(channels, **context)
+
+
+def trigger_delayed_notifications():
+    """
+    Sometimes plugins might want to call notify() and have it trigger after
+    their RPC method has completed its call.  For example, a plugin might call
+    notify() in the middle of a database transaction and want the notification
+    to happen after a commit has occurred.  When notify() is called with
+    delay=True then it appends to a list, and this method goes through that list
+    and triggers broadcasts for those notifications.
+    """
+    if threadlocal.get(DELAYED_NOTIFICATIONS_KEY):
+        for channels, context in threadlocal.get(DELAYED_NOTIFICATIONS_KEY):
+            broadcaster.defer(channels, **context)
+            local_broadcaster.defer(channels, **context)
+        threadlocal.set(DELAYED_NOTIFICATIONS_KEY, [])
 
 
 def notifies(*args, **kwargs):
@@ -188,7 +211,6 @@ def notifies(*args, **kwargs):
     >>> getattr(fn_dict, 'notifies')
     ['dict']
     """
-    delay = kwargs.pop("delay", 0)
     channels = _normalize_channels(*args)
 
     def decorated_func(func):
@@ -197,7 +219,7 @@ def notifies(*args, **kwargs):
             try:
                 return func(*args, **kwargs)
             finally:
-                notify(channels, trigger=func.__name__, delay=delay)
+                notify(channels, trigger=func.__name__)
 
         notifier_func.notifies = channels
         return notifier_func
@@ -354,6 +376,14 @@ class WebSocketDispatcher(WebSocket):
     adding and removing their subscriptions from this data structure.
     """
 
+    instances = set()
+    """
+    When debugging Sideboard, it can be useful to introspect a list of all
+    open websocket connections which have been made to this server.  Instances
+    of this class add themselves to this set when instantiated and remove
+    themselves when closed.
+    """
+
     def __init__(self, *args, **kwargs):
         """
         This passes all arguments to the parent constructor.  In addition, it
@@ -375,6 +405,9 @@ class WebSocketDispatcher(WebSocket):
             /wsrpc, with /ws being auth-protected (so the username field will be
             meaningful) and /wsrpc being client-cert protected (so the username
             will always be 'rpc').
+
+        header_fields: We copy header fields from the request that initiated the
+            websocket connection.
 
         cached_queries and cached_fingerprints: When we receive a subscription
             update, Sideboard re-runs all of the subscription methods to see if
@@ -402,11 +435,22 @@ class WebSocketDispatcher(WebSocket):
                 }
         """
         WebSocket.__init__(self, *args, **kwargs)
+        self.instances.add(self)
         self.send_lock = RLock()
         self.passthru_subscriptions = {}
         self.client_locks = defaultdict(RLock)
         self.cached_queries, self.cached_fingerprints = defaultdict(dict), defaultdict(dict)
         self.session_fields = self.check_authentication()
+        self.header_fields = self.fetch_headers()
+
+    @classmethod
+    def fetch_headers(cls):
+        """
+        This method returns a dict with all of the header fields we want to
+        store for this websocket so that we can set them as threadlocal global
+        variables for all subsequent websocket RPC requests.
+        """
+        return {field: cherrypy.request.headers.get(field) for field in config['ws.header_fields']}
 
     @classmethod
     def check_authentication(cls):
@@ -452,11 +496,14 @@ class WebSocketDispatcher(WebSocket):
         """
         triggered = set()
         for channel in sideboard.lib.listify(channels):
-            for websocket, clients in cls.subscriptions[channel].items():
-                for client, callbacks in clients.copy().items():
-                    if client != originating_client:
-                        for callback in callbacks:
-                            triggered.add((websocket, client, callback))
+            for websocket, clients in list(cls.subscriptions[channel].items()):
+                if websocket.is_closed:
+                    websocket.unsubscribe_all()
+                else:
+                    for client, callbacks in clients.copy().items():
+                        if client != originating_client:
+                            for callback in callbacks:
+                                triggered.add((websocket, client, callback))
 
         for websocket, client, callback in triggered:
             try:
@@ -522,6 +569,7 @@ class WebSocketDispatcher(WebSocket):
         """
         if self.is_closed:
             log.debug('ignoring send on an already closed websocket: {}', message)
+            self.unsubscribe_all()
             return
 
         message = {k: v for k, v in message.items() if v is not None}
@@ -544,9 +592,11 @@ class WebSocketDispatcher(WebSocket):
     def closed(self, code, reason=''):
         """
         This overrides the default closed handler to first clean up all of our
-        subscriptions and log a message before closing.
+        subscriptions, remove this websocket from the registry of instances,
+        and log a message before closing.
         """
         log.info('closing: code={!r} reason={!r}', code, reason)
+        self.instances.discard(self)
         self.unsubscribe_all()
         WebSocket.closed(self, code, reason)
 
@@ -586,8 +636,10 @@ class WebSocketDispatcher(WebSocket):
     def unsubscribe_all(self):
         """Called on close to tear down all of this websocket's subscriptions."""
         for clients in self.subscriptions.values():
-            for client in clients.pop(self, {}):
-                self.teardown_passthru(client)
+            clients.pop(self, {})
+
+        for passthru_client in list(self.passthru_subscriptions.keys()):
+            self.teardown_passthru(passthru_client)
 
     def update_subscriptions(self, client, callback, channels):
         """Updates WebSocketDispatcher.subscriptions for the given client/channels."""
@@ -605,7 +657,7 @@ class WebSocketDispatcher(WebSocket):
         """
         if callback in self.cached_queries[client]:
             function, args, kwargs, client_data = self.cached_queries[client][callback]
-            threadlocal.reset(websocket=self, client_data=client_data, **self.session_fields)
+            threadlocal.reset(websocket=self, client_data=client_data, headers=self.header_fields, **self.session_fields)
             result = function(*args, **kwargs)
             self.send(trigger=trigger, client=client, callback=callback, data=result)
 
@@ -635,6 +687,19 @@ class WebSocketDispatcher(WebSocket):
         elif action is not None:
             log.warn('unknown action {!r}', action)
 
+    def clear_cached_response(self, client, callback):
+        """
+        As explained above, Sideboard caches the most recent response to a
+        subscription so that when we check the subscription we can see if new
+        data needs to be sent.  However, if the user makes a series of requests
+        with the same client/callback ids which return the same response, they
+        probably still expect to get data back.  This method is therefore called
+        every time we receive an explicit RPC call for a subscription to discard
+        the cached value, ensuring that an explicit RPC call to a service
+        exposed via websocket always receives a response.
+        """
+        self.cached_fingerprints[client].pop(callback, None)
+
     def received_message(self, message):
         """
         This overrides the default ws4py event handler to parse the incoming
@@ -661,12 +726,13 @@ class WebSocketDispatcher(WebSocket):
         """
         before = time.time()
         duration, result = None, None
-        threadlocal.reset(websocket=self, message=message, **self.session_fields)
+        threadlocal.reset(websocket=self, message=message, headers=self.header_fields, **self.session_fields)
         action, callback, client, method = message.get('action'), message.get('callback'), message.get('client'), message.get('method')
         try:
             with self.client_lock(client):
                 self.internal_action(action, client, callback)
                 if method:
+                    self.clear_cached_response(client, callback)
                     func = self.get_method(method)
                     args, kwargs = get_params(message.get('params'))
                     result = self.NO_RESPONSE
@@ -674,6 +740,7 @@ class WebSocketDispatcher(WebSocket):
                         result = func(*args, **kwargs)
                         duration = (time.time() - before) if config['debug'] else None
                     finally:
+                        trigger_delayed_notifications()
                         self.update_triggers(client, callback, func, args, kwargs, result, duration)
         except:
             log.error('unexpected websocket dispatch error', exc_info=True)

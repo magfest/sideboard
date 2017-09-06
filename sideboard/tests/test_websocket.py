@@ -184,6 +184,7 @@ def test_make_updated_subscription_caller(ws, orig_ws):
     threadlocal.reset(message={'client': 'xxx'}, websocket=orig_ws)
     func = ws.make_caller('foo.bar')
     assert func is ws.make_caller('foo.baz')
+    assert func.method == 'foo.baz'
 
 
 def test_make_subscription_unsubscribe(ws, orig_ws):

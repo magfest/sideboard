@@ -3,6 +3,7 @@ import ssl
 import socket
 from contextlib import closing
 
+import six
 from six.moves.urllib_parse import urlparse
 
 from sideboard.lib import services, entry_point
@@ -35,7 +36,8 @@ def _check(url, **ssl_params):
     else:
         status.append('successfully opened socket connection to {}:{}'.format(host, port))
 
-    if any(ssl_params.values()):
+    # check if any of the non-version SSL options have been set
+    if any(val for val in ssl_params.values() if not isinstance(val, int)):
         try:
             wrapped = ssl.wrap_socket(sock, **ssl_params)
         except Exception as e:
@@ -60,7 +62,7 @@ def _check(url, **ssl_params):
 def check_all():
     checks = {}
     for name, jservice in services._jsonrpc.items():
-        jproxy = jservice._send.im_self  # ugly kludge to get the ServerProxy object
+        jproxy = jservice._send.im_self if six.PY2 else jservice._send.__self__  # ugly kludge to get the ServerProxy object
         url = '{}://{}/'.format(jproxy.type, jproxy.host)
         checks[name] = _check(url, **jproxy.ssl_opts)
     return checks
