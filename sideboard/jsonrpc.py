@@ -44,7 +44,7 @@ def _make_jsonrpc_handler(services, debug=config['debug'],
     @cherrypy.expose
     @cherrypy.tools.force_json_in()
     @cherrypy.tools.json_out(handler=json_handler)
-    def jsonrpc_handler(self):
+    def jsonrpc_handler(self=None):
         id = None
 
         def error(code, message):
