@@ -187,8 +187,9 @@ class AutoLogger(object):
         self.adapter_kwargs = adapter_kwargs
 
     def __getattr__(self, name):
-        if 'self' in inspect.currentframe().f_back.f_locals:
-            other = inspect.currentframe().f_back.f_locals['self']
+        f_locals = inspect.currentframe().f_back.f_locals
+        if 'self' in f_locals and f_locals['self'] is not None:
+            other = f_locals['self']
             caller_name = '%s.%s' % (other.__class__.__module__, other.__class__.__name__)
         else:
             caller_name = inspect.currentframe().f_back.f_globals['__name__']
