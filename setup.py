@@ -1,3 +1,5 @@
+import os
+import platform
 import sys
 import os.path
 from setuptools import setup, find_packages
@@ -9,11 +11,16 @@ __here__ = os.path.abspath(os.path.dirname(__file__))
 with open(os.path.join(__here__, pkg_name, '_version.py')) as version:
     exec(version.read())
 # __version__ is now defined
-req_data = open(os.path.join(__here__, 'requirements.txt')).read()
-raw_requires = [r.strip() for r in req_data.split() if r.strip() != '']
+req_data = open(os.path.join(__here__, 'requirements.txt')).readlines()
+raw_requires = [r.strip() for r in req_data if r.strip() != '']
 
 # Ugly hack to reconcile pip requirements.txt and setup.py install_requires
+os_name = os.name
 sys_platform = sys.platform
+platform_release = platform.release()
+implementation_name = sys.implementation.name
+platform_machine = platform.machine()
+platform_python_implementation = platform.python_implementation()
 requires = []
 for s in reversed(raw_requires):
     if ';' in s:
