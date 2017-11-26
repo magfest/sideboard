@@ -10,8 +10,19 @@ with open(os.path.join(__here__, pkg_name, '_version.py')) as version:
     exec(version.read())
 # __version__ is now defined
 req_data = open(os.path.join(__here__, 'requirements.txt')).read()
-requires = [r.strip() for r in req_data.split() if r.strip() != '']
-requires = list(reversed(requires))
+raw_requires = [r.strip() for r in req_data.split() if r.strip() != '']
+raw_requires = list(reversed(raw_requires))
+
+# Ugly hack to reconcile pip requirements.txt and setup.py install_requires
+sys_platform = sys.platform
+requires = []
+for s in raw_requires:
+    if ';' in s:
+        req, env_marker = s.split(';')
+        if eval(env_marker):
+            requires.append(s)
+    else:
+        requires.append(s)
 
 # testing dependencies
 req_data = open(os.path.join(__here__, 'test_requirements.txt')).read()
