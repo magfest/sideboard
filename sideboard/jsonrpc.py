@@ -6,6 +6,7 @@ import cherrypy
 from cherrypy.lib.jsontools import json_decode
 
 from sideboard.lib import log, config, serializer
+from sideboard.websockets import trigger_delayed_notifications
 
 
 ERR_INVALID_RPC = -32600
@@ -34,8 +35,8 @@ def force_json_in():
         except ValueError:
             raise cherrypy.HTTPError(400, 'Invalid JSON document')
 
-
 cherrypy.tools.force_json_in = cherrypy.Tool('before_request_body', force_json_in, priority=30)
+
 
 def _make_jsonrpc_handler(services, debug=config['debug'],
                          precall=lambda body: None,
@@ -43,7 +44,7 @@ def _make_jsonrpc_handler(services, debug=config['debug'],
     @cherrypy.expose
     @cherrypy.tools.force_json_in()
     @cherrypy.tools.json_out(handler=json_handler)
-    def jsonrpc_handler(self):
+    def jsonrpc_handler(self=None):
         id = None
 
         def error(code, message):
@@ -90,5 +91,7 @@ def _make_jsonrpc_handler(services, debug=config['debug'],
             if debug:
                 message += ': ' + traceback.format_exc()
             return error(ERR_FUNC_EXCEPTION, message)
+        finally:
+            trigger_delayed_notifications()
 
     return jsonrpc_handler

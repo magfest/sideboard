@@ -5,7 +5,6 @@ from uuid import uuid4
 from time import sleep
 from random import randrange
 from unittest import TestCase
-from contextlib import closing
 
 import six
 from six.moves.queue import Queue, Empty
@@ -18,24 +17,29 @@ from rpctools.jsonrpc import ServerProxy
 from ws4py.server.cherrypyserver import WebSocketPlugin
 
 import sideboard.websockets
-from sideboard.lib import log, config, subscribes, notifies, services, cached_property, WebSocket
-from sideboard.tests import service_patcher, config_patcher
+from sideboard.lib import log, config, subscribes, notifies, notify, services, cached_property, WebSocket
+from sideboard.tests import service_patcher, config_patcher, get_available_port
 from sideboard.tests.test_sa import Session
 
 
-@pytest.mark.nonfunctional
+if config['cherrypy']['server.socket_port'] == 0:
+    available_port = get_available_port()
+
+    # The config is updated in two places because by the time this code is
+    # executed, cherrypy.config will already be populated with the values from
+    # our config file. The configuration will already be living in two places,
+    # each of which must be updated.
+    config['cherrypy']['server.socket_port'] = available_port
+    cherrypy.config.update({'server.socket_port': available_port})
+
+
+@pytest.mark.functional
 class SideboardServerTest(TestCase):
     port = config['cherrypy']['server.socket_port']
     jsonrpc_url = 'http://127.0.0.1:{}/jsonrpc'.format(port)
     jsonrpc = ServerProxy(jsonrpc_url)
 
     rsess_username = 'unit_tests'
-
-    @staticmethod
-    def assert_port_open(port):
-        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.bind(('0.0.0.0', port))
 
     @staticmethod
     def assert_can_connect_to_localhost(port):
@@ -51,6 +55,8 @@ class SideboardServerTest(TestCase):
 
     @classmethod
     def start_cherrypy(cls):
+        config['thread_wait_interval'] = 0.1
+
         class Root(object):
             @cherrypy.expose
             def index(self):
@@ -60,7 +66,6 @@ class SideboardServerTest(TestCase):
         cherrypy.tree.apps.pop('/mock_login', None)
         cherrypy.tree.mount(Root(), '/mock_login')
 
-        cls.assert_port_open(cls.port)
         cherrypy.config.update({'engine.autoreload_on': False})
         cherrypy.engine.start()
         cherrypy.engine.wait(cherrypy.engine.states.STARTED)
@@ -232,9 +237,9 @@ class TestWebsocketSubscriptions(SideboardServerTest):
     def get_names(self):
         return self.names
 
-    @notifies('names')
     def change_name(self, name=None):
         self.names[-1] = name or uuid4().hex
+        notify('names', delay=True)
 
     @notifies('names')
     def change_name_then_error(self):
@@ -423,10 +428,11 @@ class TestWebsocketCall(SideboardServerTest):
 class TestWebsocketsCrudSubscriptions(SideboardServerTest):
     @pytest.fixture(autouse=True)
     def override(self, service_patcher):
-        class MockCrud: pass
+        class MockCrud:
+            pass
         mr = self.mr = MockCrud()
         for name in ['create', 'update', 'delete']:
-            setattr(mr, name, Session.crud.crud_notifies(self.make_crud_method(name), delay=0.5))
+            setattr(mr, name, Session.crud.crud_notifies(self.make_crud_method(name)))
         for name in ['read', 'count']:
             setattr(mr, name, Session.crud.crud_subscribes(self.make_crud_method(name)))
         service_patcher('crud', mr)

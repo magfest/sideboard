@@ -1,17 +1,34 @@
 from __future__ import unicode_literals
 import sys
 import importlib
+from collections import OrderedDict
 from glob import glob
+from itertools import chain
 from os.path import join, isdir, basename
 
 from sideboard.config import config
 
-plugins = {}
+
+plugins = OrderedDict()
+plugin_dirs = OrderedDict()
+
+
+def _discover_plugin_dirs():
+    unsorted_dirs = {basename(d).replace('-', '_'): d
+            for d in glob(join(config['plugins_dir'], '*'))
+            if isdir(d) and not basename(d).startswith('_')}
+
+    priority_plugins = config['priority_plugins']
+    nonpriority_plugins = sorted(set(unsorted_dirs.keys()).difference(priority_plugins))
+    sorted_plugins = chain(priority_plugins, nonpriority_plugins)
+
+    return [(name, unsorted_dirs[name]) for name in sorted_plugins]
+
 
 def _discover_plugins():
-    ordered = list(reversed(config['priority_plugins']))
-    plugin_dirs = [d for d in glob(join(config['plugins_dir'], '*')) if isdir(d) and not basename(d).startswith('_')]
-    for plugin_path in sorted(plugin_dirs, reverse=True, key=lambda d: (ordered.index(d) if d in ordered else 0)):
-        sys.path.append(plugin_path)
-        plugin_name = basename(plugin_path).replace('-', '_')
-        plugins[plugin_name] = importlib.import_module(plugin_name)
+    for name, path in _discover_plugin_dirs():
+        sys.path.append(path)
+        plugin_dirs[name] = path
+
+    for name, path in plugin_dirs.items():
+        plugins[name] = importlib.import_module(name)
