@@ -13,4 +13,3 @@ pip>=1.5.6
 sh>=1.09
 python-prctl>=1.6.1; 'linux' in sys_platform
 psutil>=5.4.1
-twisted
