@@ -4,6 +4,7 @@ import sys
 
 import six
 import cherrypy
+from cherrypy.lib import cpstats
 
 import sideboard
 from sideboard.internal import connection_checker
@@ -171,7 +172,10 @@ def mount(root, script_name='', config=None):
 
 orig_mount = cherrypy.tree.mount
 cherrypy.tree.mount = mount
-cherrypy.tree.mount(Root(), '', app_config)
+root = Root()
+if config['cherrypy']['tools.cpstats.on']:
+    root.stats = cpstats.StatsPage()
+cherrypy.tree.mount(root, '', app_config)
 
 if config['cherrypy']['profiling.on']:
     # If profiling is turned on then expose the web UI, otherwise ignore it.
