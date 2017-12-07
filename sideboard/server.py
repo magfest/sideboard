@@ -143,6 +143,7 @@ if config['debug']:
         'tools.staticdir.dir': os.path.join(config['module_root'], 'docs', 'html'),
         'tools.staticdir.index': 'index.html'
     }
+
 cherrypy_config = {}
 for setting, value in config['cherrypy'].items():
     if isinstance(value, six.string_types):
@@ -155,6 +156,19 @@ for setting, value in config['cherrypy'].items():
     cherrypy_config[setting] = value
 cherrypy.config.update(cherrypy_config)
 
+# Unsubscribe the default server
+cherrypy.server.unsubscribe()
+
+# Instantiate a new server object
+server = cherrypy._cpserver.Server()
+
+# Configure the server object
+server.socket_host = config['cherrypy']['server.socket_host']
+server.socket_port = config['cherrypy']['server.socket_port']
+server.thread_pool = config['cherrypy']['server.thread_pool']
+
+# Subscribe this server
+server.subscribe()
 
 # on Python 2, we need bytestrings for CherryPy config, see https://bitbucket.org/cherrypy/cherrypy/issue/1184
 def recursive_coerce(d):
