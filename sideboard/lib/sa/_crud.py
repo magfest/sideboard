@@ -164,6 +164,7 @@ from functools import wraps
 
 import six
 from sqlalchemy import orm, union, select, func
+from sqlalchemy.ext.associationproxy import AssociationProxy
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.orm.exc import NoResultFound, MultipleResultsFound
@@ -1275,7 +1276,7 @@ class CrudMixin(object):
 
                 is_column_property = isinstance(attr, InstrumentedAttribute) and isinstance(attr.property, ColumnProperty)
                 is_hybrid_property = isinstance(getattr(attr, 'descriptor', None), hybrid_property)
-                is_property = isinstance(attr, (property, InstrumentedAttribute, ClauseElement))
+                is_property = isinstance(attr, (property, InstrumentedAttribute, ClauseElement, AssociationProxy))
                 is_callable = callable(attr)
 
                 if is_column_property or not (is_hybrid_property or is_property or is_callable):
