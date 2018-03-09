@@ -3,7 +3,6 @@ import sys
 import importlib
 from collections import OrderedDict
 from glob import glob
-from itertools import chain
 from os.path import join, isdir, basename
 
 from sideboard.config import config
@@ -20,7 +19,7 @@ def _discover_plugin_dirs():
 
     priority_plugins = config['priority_plugins']
     nonpriority_plugins = sorted(set(unsorted_dirs.keys()).difference(priority_plugins))
-    sorted_plugins = chain(priority_plugins, nonpriority_plugins)
+    sorted_plugins = priority_plugins + nonpriority_plugins
 
     return [(name, unsorted_dirs[name]) for name in sorted_plugins]
 
@@ -32,3 +31,5 @@ def _discover_plugins():
 
     for name, path in plugin_dirs.items():
         plugins[name] = importlib.import_module(name)
+        if callable(getattr(plugins[name], 'on_load', None)):
+            plugins[name].on_load()
