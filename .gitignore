@@ -19,6 +19,7 @@ data/profiler/*
 *-bootstrap.py
 data/*.db
 data/celerybeat-schedule
+data/celerybeat.pid
 .tox
 node_modules/
 .cache
