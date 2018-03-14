@@ -18,6 +18,7 @@ data/sessions/*
 data/profiler/*
 *-bootstrap.py
 data/*.db
+data/celerybeat-schedule
 .tox
 node_modules/
 .cache
