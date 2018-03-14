@@ -32,3 +32,5 @@ def _discover_plugins():
 
     for name, path in plugin_dirs.items():
         plugins[name] = importlib.import_module(name)
+        if callable(getattr(plugins[name], 'on_load', None)):
+            plugins[name].on_load()

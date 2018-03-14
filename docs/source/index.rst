@@ -970,6 +970,8 @@ One of the most common things our web applications want to do is run tasks in th
 
 When we refer to "Sideboard starting" and "Sideboard stopping" we are referring specifically to when Sideboard starts its CherryPy server; this happens after all plugins have been imported, so you can safely call into other plugins in these tasks and functions.
 
+If instead of running a function when Sideboard starts, you need to run a function immediately after Sideboard loads a plugin, you may optionally declare an ``on_load()`` function in your plugin's top-level ``__init__.py`` module. If it exists, Sideboard will call ``on_load()`` immediately after loading the plugin, before attempting to load any subsequent plugins.
+
 
 .. function:: on_startup(func[, priority=50])
     

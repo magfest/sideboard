@@ -48,6 +48,13 @@ def on_startup(func=None, priority=50):
         @on_startup(priority=25)
         def callback_function():
             ...
+
+    If instead of running a function when Sideboard starts, you need to run a
+    function immediately after Sideboard loads your plugin, you may optionally
+    declare an on_load() function in your plugin's top-level __init__.py
+    module. If it exists, Sideboard will call on_load() immediately after
+    loading the plugin, before attempting to load any subsequent plugins.
+
     """
     if func:
         return _on_startup(func, priority)
