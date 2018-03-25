@@ -23,6 +23,7 @@ data/celerybeat.pid
 .tox
 node_modules/
 .cache
+.pytest_cache
 distribute-*.tar.gz
 distribute_setup.py
 .eggs/
