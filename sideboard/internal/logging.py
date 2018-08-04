@@ -15,7 +15,7 @@ class IndentMultilinesLogFormatter(logging.Formatter):
     def format(self, record):
         s = super(IndentMultilinesLogFormatter, self).format(record)
         # indent all lines that start with a newline so they are easier for external log programs to parse
-        s = s.rstrip('\n').replace('\n', '\n    ')
+        s = s.rstrip('\n').replace('\n', '\n    ')
         return s
 
 
