@@ -20,6 +20,7 @@ data/profiler/*
 data/*.db
 data/celerybeat-schedule
 data/celerybeat.pid
+data/uber.site_sections.*
 .tox
 node_modules/
 .cache
