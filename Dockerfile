@@ -1,4 +1,4 @@
-FROM python:3.4.5
+FROM python:3.6
 MAINTAINER RAMS Project "code@magfest.org"
 LABEL version.sideboard ="1.0"
 WORKDIR /app
