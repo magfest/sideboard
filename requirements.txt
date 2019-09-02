@@ -1,5 +1,5 @@
 configobj>=5.0.5
-cherrypy>=3.6.0
+cherrypy==17.3.0
 ws4py>=0.3.2
 SQLAlchemy>=1.1.0
 six>=1.5.2
