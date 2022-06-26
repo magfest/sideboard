@@ -18,9 +18,13 @@ data/sessions/*
 data/profiler/*
 *-bootstrap.py
 data/*.db
+data/celerybeat-schedule
+data/celerybeat.pid
+data/uber.site_sections.*
 .tox
 node_modules/
 .cache
+.pytest_cache
 distribute-*.tar.gz
 distribute_setup.py
 .eggs/
