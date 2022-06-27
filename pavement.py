@@ -75,16 +75,17 @@ def make_venv():
     develop_sideboard()
 
 
-def install_pip_requirements_in_dir(dir_of_requirements_txt):
-    path_to_pip = __here__ / path('env/bin/pip')
+def install_pip_requirements_in_dir(dir_of_requirements_txt, env_path=None):
+    if env_path is None:
+        pip = __here__ / path('env/bin/pip')
+    else:
+        pip = path(env_path) / path('bin/pip')
 
-    print("---- installing dependencies in {} ----"
-        .format(dir_of_requirements_txt))
+    print("---- **PAVER** installing dependencies in {} ----".format(dir_of_requirements_txt))\
 
-    sh('{pip} install -e {dir_of_requirements_txt}'
-        .format(
-            pip=path_to_pip,
-            dir_of_requirements_txt=dir_of_requirements_txt))
+    # "-e" means "editable mode" which installs .egg-info in the local dir
+    sh(f'{pip} install -e {dir_of_requirements_txt}')
+    sh(f'{pip} install -r {dir_of_requirements_txt}/requirements.txt')
 
 
 def run_setup_py(path):
@@ -207,10 +208,13 @@ def create_plugin(options):
 
 
 @task
-def install_deps():
-    install_pip_requirements_in_dir(__here__)
-    for pdir in collect_plugin_dirs():
-        install_pip_requirements_in_dir(pdir)
+@cmdopts([
+    ('env_path=', 'e', "override path to virtualenv"),  # -e /some/path or --env_path=/some/path
+    ])
+def install_deps(options):
+    install_pip_requirements_in_dir(__here__, options.env_path)
+    for plugin_dir in collect_plugin_dirs():
+        install_pip_requirements_in_dir(plugin_dir, options.env_path)
 
 
 @task
