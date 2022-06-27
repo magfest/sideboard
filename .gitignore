@@ -29,3 +29,4 @@ distribute-*.tar.gz
 distribute_setup.py
 .eggs/
 .coverage
+db-data/
