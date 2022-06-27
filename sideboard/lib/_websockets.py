@@ -6,7 +6,7 @@ from copy import deepcopy
 from itertools import count
 from threading import RLock, Event
 from datetime import datetime, timedelta
-from collections import Mapping, MutableMapping
+from collections.abc import Mapping, MutableMapping
 
 import six
 from ws4py.client.threadedclient import WebSocketClient

@@ -3,7 +3,7 @@ import os
 import re
 
 from os import unlink
-from collections import Sized, Iterable, Mapping
+from collections.abc import Sized, Iterable, Mapping
 from copy import deepcopy
 from tempfile import NamedTemporaryFile
 

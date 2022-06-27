@@ -157,7 +157,8 @@ import uuid
 import inspect
 import collections
 from copy import deepcopy
-from collections import Mapping, defaultdict
+from collections.abc import Mapping
+from collections import defaultdict
 from datetime import datetime, date, time
 from itertools import chain
 from functools import wraps
