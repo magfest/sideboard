@@ -1,0 +1,21 @@
+version: '3.9'
+
+services:
+  backend:
+    # for live-editing code
+    volumes:
+      - ./:/app/sideboard/
+
+    restart: "no"
+
+    ports:
+     - "8282:8282"
+
+    # option 1: build container every time (decent for development)
+    build:
+      context: ./
+      dockerfile: Dockerfile
+      target: dev   # if using multi-stage dockerfiles, useful for selection of a particular stage
+
+    # option 2: use a prebuilt image (better for production)
+    # image: ghcr.io/magfest/sideboard-whatever:dev

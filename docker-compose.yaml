@@ -1,0 +1,41 @@
+version: '3.9'
+
+# default settings. it's expected that other YAML files will override these in production
+x-postgres-default-vars: &postgres-default-vars
+  POSTGRES_USER: uber_db_user
+  POSTGRES_PASSWORD: uber_db_password
+  POSTGRES_DB: uber_db
+
+x-http-default-vars: &http-default-vars
+  HTTPS_SERVER_HOSTNAME: changeme.ubersystem.com
+
+services:
+  db:
+    restart: "always"
+    image: 'postgres:latest'
+    
+    environment:
+      <<: *postgres-default-vars
+    ports:
+      - "5432:5432"
+
+    # to prevent heartache from accidentally deleting the DB, our default is to have the 
+    # volume be served from a local directory. feel free to remove or change this.
+    volumes:
+      - ./db-data/:/var/lib/postgresql/data/
+
+  # our backend uber app. expose via HTTP internally only (no SSL, and not publicly exposed)
+  backend:
+    # image: ghcr.io/magfest/ubersystem_prime:v1.0.0.0   # for production, populate this with container builds
+    restart: "always"
+    depends_on:
+      - db
+    environment:
+      <<: *postgres-default-vars
+      <<: *http-default-vars
+      # example of how to set other env vars
+      SOME_OTHER_ENV_DB: "some_value"
+
+    # if you want to expose the backend ports directly (not recommended. go through nginx)
+    # ports:
+    #  - "80:80"   # warning: if nginx is also trying to listen on 80, one of the two services will fail to start.

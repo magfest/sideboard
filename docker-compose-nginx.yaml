@@ -1,0 +1,38 @@
+version: '3.9'
+
+# NOTE: to use this file, you need to set HTTPS_SERVER_HOSTNAME in an "environment" section.
+# in uber this is done one level up in docker-compose-config.yaml
+# also need to add files to ./nginx/templates
+
+services:
+  frontend: 
+    image: nginx:stable-alpine
+    restart: "always"
+    depends_on:
+      - backend
+    ports: 
+      - "80:80"   # warning: if backend service is also listening on 80 on the host, this will conflict and fail to start
+      - "443:443"
+    volumes:
+      - ./nginx/templates:/etc/nginx/templates/:ro
+
+      # NOTE: it is expected that deploys on real servers will override these values in an external downstream config file.
+      # the two root paths here are the ones you need to use though. they match what's in nginx.conf
+      #
+      # DEV NOTE: This gets weird under windows sometimes, be careful if you're hitting errors, could be a windows-specific thing.
+      # If you have issues, try this from inside WSL2 instead of native windows.
+      # example1:
+      # - /etc/ssl/certs/_.uber.org/final-bundle.crt:/__server_bundle.crt:ro
+      # - /etc/ssl/certs/_.uber.org/_.uber.org.key:/__server.key:ro
+      #
+      # example2: (works on the prod server where the config dir is two down from uber_server/ root dir)
+      # - ../../config/certs/_.uber.org/final-bundle.crt:/__server_bundle.crt:ro
+      # - ../../config/certs/_.uber.org/_.uber.org.key:/__server.key:ro
+      #
+      # NOTE2: anything in templates directory will automatically have envsubst ran against it.
+      # ENV vars defined in docker-compose can be used in the nginx conf files like this: ${SOME_ENV_VAR}
+      
+      # defaults: use self-signed certs so at least the server actually starts
+      # these files need to exist and should be checked in
+      - ./self-signed.crt:/__server_bundle.crt:ro
+      - ./self-signed.key:/__server.key:ro
