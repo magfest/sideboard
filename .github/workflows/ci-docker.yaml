@@ -1,5 +1,5 @@
 ---
-name: Backend - Build Image
+name: Build Docker Image
 
 on: push
 
