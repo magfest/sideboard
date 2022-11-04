@@ -72,7 +72,7 @@ RUN apt-get update && apt-get install -y libcap-dev && rm -rf /var/lib/apt/lists
 ADD . /app/
 RUN pip3 install virtualenv \
   && virtualenv --always-copy /app/env \
-	&& /app/env/bin/pip3 install paver
+	&& /app/env/bin/pip3 install paver "setuptools<58"
 RUN /app/env/bin/paver install_deps
 
 CMD /app/env/bin/python3 /app/sideboard/run_server.py
