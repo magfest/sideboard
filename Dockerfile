@@ -1,4 +1,4 @@
-FROM python:3.11.0
+FROM python:3.11.0 as build
 MAINTAINER RAMS Project "code@magfest.org"
 LABEL version.sideboard ="1.0"
 WORKDIR /app
@@ -82,5 +82,10 @@ ADD pavement.py pavement.py
 RUN /app/env/bin/paver install_deps
 ADD . /app/
 
+FROM build as test
+RUN /app/env/bin/pip install mock pytest
+CMD /app/env/bin/python3 -m pytest
+
+FROM build as release
 CMD /app/env/bin/python3 /app/sideboard/run_server.py
 EXPOSE 8282

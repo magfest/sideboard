@@ -100,7 +100,7 @@ class SideboardWebSocket(WebSocketDispatcher):
     def check_authentication(cls):
         host, origin = cherrypy.request.headers['host'], cherrypy.request.headers['origin']
         if ('//' + host.split(':')[0]) not in origin:
-            log.error('Javascript websocket connections must follow same-origin policy; origin {!r} does not match host {!r}', origin, host)
+            log.error('Javascript websocket connections must follow same-origin policy; origin %s does not match host %s', origin, host)
             raise WebSocketAuthError('Origin and Host headers do not match')
 
         if config['ws.auth_required'] and not cherrypy.session.get(config['ws.auth_field']):

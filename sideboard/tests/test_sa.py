@@ -41,7 +41,7 @@ class Boss(Base):
 @regex_validation('username', r'[0-9a-zA-z]+', 'Usernames may only contain alphanumeric characters')
 class Account(Base):
     user_id = Column(UUID(), ForeignKey('user.id', ondelete='RESTRICT'), nullable=False)
-    user = relationship(User)
+    user = relationship(User, overlaps="employees")
     username = Column(UnicodeText(), nullable=False, unique=True)
     password = Column(UnicodeText(), nullable=False)
 
@@ -90,7 +90,7 @@ class CrudableMixin(object):
     }
 )
 @text_length_validation('string_model_attr', 2, 100)
-@regex_validation('string_model_attr', '^[A-Za-z0-9\.\_\-]+$', 'test thing')
+@regex_validation('string_model_attr', '^[A-Za-z0-9\\.\\_\\-]+$', 'test thing')
 @text_length_validation('overridden_desc', 1, 100)
 @text_length_validation('nonexistant_field', 1, 100)
 class CrudableClass(CrudableMixin, Base):
@@ -233,6 +233,7 @@ class TestDeclarativeBaseConstructor(object):
 
         assert Foo().id is None
 
+    @pytest.mark.filterwarnings("ignore:Unmanaged access of declarative attribute")
     def test_declarative_base_without_parameters(self):
 
         @declarative_base
@@ -241,6 +242,7 @@ class TestDeclarativeBaseConstructor(object):
 
         assert BaseTest.__tablename__ == 'base_test'
 
+    @pytest.mark.filterwarnings("ignore:Unmanaged access of declarative attribute")
     def test_declarative_base_with_parameters(self):
 
         @declarative_base(name=str('NameOverride'))
@@ -673,13 +675,12 @@ class TestCrudUpdate(object):
 
 
 class TestCrudDelete(object):
-    def test_delete_cascades_to_tags(self):
-        pytest.skip('sqlite is not compiled with foreign key support on Jenkins; this test works on my machine but not on Jenkins')
+    def test_delete_cascades_to_tags(self, db):
         Session.crud.delete(query_from(db.turner_account))
         Session.crud.delete(query_from(db.turner))
         with Session() as session:
-            self.assertEqual(1, session.query(Account).count())
-            self.assertEqual(2, session.query(Tag).count())
+            assert 1 == session.query(Account).count()
+            assert 2 == session.query(Tag).count()
 
     def test_delete_by_id(self, db):
         Session.crud.delete({'_model': 'Account', 'field': 'id', 'value': db.turner_account['id']})

@@ -218,6 +218,6 @@ class _SideboardCoreServices(object):
     """
     def poll(self):
         """empty method which exists only to help keep WebSockets alive"""
-        log.debug('sideboard.poll by user {}', threadlocal.get('username'))
+        log.debug('sideboard.poll by user %s', threadlocal.get('username'))
 
 services.register(_SideboardCoreServices(), 'sideboard')

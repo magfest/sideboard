@@ -53,6 +53,7 @@ class CoerceUTF8(TypeDecorator):
     before passing off to the database.
     """
     impl = Unicode
+    cache_ok = True
 
     def process_bind_param(self, value, dialect):
         if isinstance(value, type(b'')):
@@ -67,6 +68,7 @@ class UUID(TypeDecorator):
     CHAR(32), storing as stringified hex values.
     """
     impl = CHAR
+    cache_ok = True
 
     def load_dialect_impl(self, dialect):
         if dialect.name == 'postgresql':
@@ -94,6 +96,7 @@ class UUID(TypeDecorator):
 
 class JSON(TypeDecorator):
     impl = String
+    cache_ok = True
 
     def __init__(self, comparator=None):
         self.comparator = comparator
@@ -132,7 +135,8 @@ except ImportError:
 else:
     class UTCDateTime(TypeDecorator):
         impl = DateTime
-
+        cache_ok = True
+        
         def process_bind_param(self, value, engine):
             if value is not None:
                 return value.astimezone(UTC).replace(tzinfo=None)
@@ -175,7 +179,7 @@ def check_constraint_naming_convention(constraint, table):
     for operator, text in replacements:
         constraint_name = constraint_name.replace(operator, text)
 
-    constraint_name = re.sub('[\W\s]+', '_', constraint_name)
+    constraint_name = re.sub('[\\W\\s]+', '_', constraint_name)
     if len(constraint_name) > 32:
         constraint_name = uuid.uuid5(uuid.NAMESPACE_OID, str(constraint_name)).hex
     return constraint_name

@@ -18,7 +18,7 @@ def reset_stopped():
 @pytest.fixture
 def ws(monkeypatch):
     ws = WebSocket(connect_immediately=False)
-    monkeypatch.setattr(log, 'warn', Mock())
+    monkeypatch.setattr(log, 'warning', Mock())
     ws._send = Mock()
     ws._next_id = lambda prefix: 'xxx'
     return ws
@@ -43,7 +43,7 @@ def test_subscribe_basic(ws):
         'params': ('x', 'y')
     }
     ws._send.assert_called_with(method='foo.bar', params=('x', 'y'), client='xxx')
-    assert not log.warn.called
+    assert not log.warning.called
 
 
 def test_subscribe_advanced(ws):
@@ -62,14 +62,14 @@ def test_subscribe_advanced(ws):
         'params': ('x', 'y')
     }
     ws._send.assert_called_with(method='foo.bar', params=('x', 'y'), client='yyy')
-    assert not log.warn.called
+    assert not log.warning.called
 
 
 def test_subscribe_error(ws):
     ws._send = Mock(side_effect=Exception)
     ws.subscribe(Mock(), 'foo.bar')
     assert 'xxx' in ws._callbacks
-    assert log.warn.called
+    assert log.warning.called
 
 
 def test_subscribe_paramback(ws):
@@ -91,7 +91,7 @@ def test_subscribe_paramback(ws):
         'params': (5, 6)
     }
     ws._send.assert_called_with(method='foo.bar', params=(5, 6), client='yyy')
-    assert not log.warn.called
+    assert not log.warning.called
 
 
 def test_unsubscribe(ws):

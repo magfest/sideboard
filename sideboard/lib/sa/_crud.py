@@ -157,7 +157,8 @@ import uuid
 import inspect
 import collections
 from copy import deepcopy
-from collections.abc import Mapping, defaultdict
+from collections.abc import Mapping
+from collections import defaultdict
 from datetime import datetime, date, time
 from itertools import chain
 from functools import wraps
@@ -193,9 +194,9 @@ def listify_with_count(x, count=None):
 def mappify(value):
     if isinstance(value, six.string_types):
         return {value: True}
-    elif isinstance(value, collections.Mapping):
+    elif isinstance(value, collections.abc.Mapping):
         return value
-    elif isinstance(value, collections.Iterable):
+    elif isinstance(value, collections.abc.Iterable):
         return {v: True for v in value}
     else:
         raise TypeError('unknown datatype: {}', value)
@@ -308,7 +309,7 @@ def normalize_object_graph(graph):
         return {graph: True}
     elif isinstance(graph, dict):
         return graph
-    elif isinstance(graph, collections.Iterable):
+    elif isinstance(graph, collections.abc.Iterable):
         return dict([(str(i), True) for i in graph])
     else:
         return None
@@ -505,9 +506,9 @@ def normalize_data(data, count=1):
     else:
         if isinstance(data, six.string_types):
             data = [{data: True}]
-        elif isinstance(data, collections.Mapping):
+        elif isinstance(data, collections.abc.Mapping):
             data = [data]
-        elif isinstance(data, collections.Iterable):
+        elif isinstance(data, collections.abc.Iterable):
             if any(isinstance(element, six.string_types) for element in data):
                 # this is the singular list of strings case, so wrap it and
                 # go from there
@@ -629,7 +630,7 @@ def crud_exceptions(fn):
         except:
             a = [x for x in (args or [])]
             kw = {k: v for k, v in (kwargs or {}).items()}
-            log.error('Error calling {}.{} {!r} {!r}'.format(fn.__module__, fn.__name__, a, kw), exc_info=True)
+            log.error('Error calling %s.%s %s %s'.format(fn.__module__, fn.__name__, a, kw), exc_info=True)
             exc_class, exc, tb = sys.exc_info()
             raise six.reraise(CrudException, CrudException(str(exc)), tb)
     return wrapped
@@ -674,7 +675,7 @@ def make_crud_service(Session):
                 try:
                     model = Session.resolve_model(d['_model'])
                 except:
-                    log.debug('unable to resolve model {} in query {}', d.get('_model'), d)
+                    log.debug('unable to resolve model %s in query %s', d.get('_model'), d)
                 else:
                     models.add(model)
                     for attr_name in collect_fields(d):
@@ -789,7 +790,7 @@ def make_crud_service(Session):
         @classmethod
         def _resolve_filters(cls, filters, model=None):
             model = Session.resolve_model(filters.get('_model', model))
-            table = class_mapper(model).mapped_table
+            table = class_mapper(model).persist_selectable
             and_clauses = filters.get('and', None)
             or_clauses = filters.get('or', None)
             if and_clauses:
@@ -1222,7 +1223,7 @@ class CrudMixin(object):
             try:
                 instance = session.query(cls).filter(cls.id == id).first()
             except:
-                log.error('Unable to fetch instance based on id value {!r}', value, exc_info=True)
+                log.error('Unable to fetch instance based on id value %s', value, exc_info=True)
                 raise TypeError('Invalid instance ID type for relation: {0.__name__} (value: {1})'.format(cls, value))
         elif isinstance(value, Mapping):
             # if there's no id, check to see if we're provided a dictionary
@@ -1239,19 +1240,19 @@ class CrudMixin(object):
                     except NoResultFound:
                         continue
                     except MultipleResultsFound:
-                        log.error('multiple results found for {} unique constraint: {}', cls.__name__, column_names)
+                        log.error('multiple results found for %s unique constraint: %s', cls.__name__, column_names)
                         raise
                     else:
                         break
                 else:
-                    log.debug('unable to search using unique constraints: {} with {}', column_names, value)
+                    log.debug('unable to search using unique constraints: %s with %s', column_names, value)
 
         if instance and id is None and backref_mapping and getattr(instance, backref_name, None) != parent_id:
-            log.warning('attempting to change the owner of {} without an explicitly passed id; a new {} instance will be used instead', instance, cls.__name__)
+            log.warning('attempting to change the owner of %s without an explicitly passed id; a new %s instance will be used instead', instance, cls.__name__)
             instance = None
 
         if not instance:
-            log.debug('creating new: {} with id {}', cls.__name__, id)
+            log.debug('creating new: %s with id %s', cls.__name__, id)
             if id is None:
                 instance = cls()
             else:
@@ -1371,7 +1372,7 @@ class CrudMixin(object):
         if not getattr(remote_column, 'foreign_keys', set()):
             # tags don't actually have foreign keys set, but they need to be treated as the same
             if name == 'tags':
-                log.debug('special-case handling for tags, returning: {}', remote_column.name)
+                log.debug('special-case handling for tags, returning: %s', remote_column.name)
                 return remote_column.name
             else:
                 # the implication here could be that we're the many side of a
@@ -1427,7 +1428,7 @@ class CrudMixin(object):
                 if new_inst.id is None or new_inst not in relation:
                     relation.append(new_inst)
 
-        elif isinstance(value, (collections.Mapping, six.string_types)):
+        elif isinstance(value, (collections.abc.Mapping, six.string_types)):
             if backref_id_name is not None and not value.get(backref_id_name):
                 # if this is a dictionary, it's possible we're going to be
                 # creating a new thing, if so, we'll add a backref to the
@@ -1440,7 +1441,7 @@ class CrudMixin(object):
                 if stale_inst is not None and property.cascade.delete_orphan:
                     session.delete(stale_inst)
 
-            if isinstance(value, collections.Mapping):
+            if isinstance(value, collections.abc.Mapping):
                 relation_inst.from_dict(value, validator)
                 session.flush([relation_inst])    # we want this this to be queryable for other things
 
@@ -1657,19 +1658,19 @@ class crudable(object):
             be read, and ONLY these names can be read. If not provided
             (default) all attributes not starting with an underscore
             (e.g. __str__, or _hidden) will be readable
-        @type read: C{collections.Iterable}
+        @type read: C{collections.abc.Iterable}
         @param no_read: if provided, interpreted as the attribute names that
             can't be read, taking precedence over anything specified in the
             read parameter. If not provided (default) everything allowed by
             the read parameter will be readable
-        @type no_read: C{collections.Iterable}
+        @type no_read: C{collections.abc.Iterable}
         @param update: if provided, interpreted as the attribute names that can
             be updated, in addition to the list of items are readable. If None
             (default) default to the list of readable attributes. Pass an empty
             iterable to use the default behavior listed under the read
             docstring if there were attributes passed to read that you don't
             want update to default to
-        @type update: C{collections.Iterable}
+        @type update: C{collections.abc.Iterable}
         @param no_update: if provided, interpreted as the attribute names that
             can't be updated, taking precedence over anything specified in the
             update parameter. If None (default) default to the list of
@@ -1677,7 +1678,7 @@ class crudable(object):
             behavior listed under the no_read docstring if there were
             attributes passed to no_read that you don't want no_update to
             default to
-        @type no_update: C{collections.Iterable}
+        @type no_update: C{collections.abc.Iterable}
         @param can_delete: if True (default), the decorated class can be
             deleted
         @type can_delete: C{bool}
@@ -1850,14 +1851,14 @@ class crudable(object):
                         field['type'] = cls._type_map.get(type(attr.property.columns[0].type), 'auto')
                         field_default = getattr(attr.property.columns[0], 'default', None)
                         # only put the default here if it exists, and it's not an automatic thing like "time.utcnow()"
-                        if field_default is not None and field['type'] != 'auto' and not isinstance(field_default.arg, (collections.Callable, property)):
+                        if field_default is not None and field['type'] != 'auto' and not isinstance(field_default.arg, (collections.abc.Callable, property)):
                             field['defaultValue'] = field_default.arg
                     elif hasattr(attr, "default"):
                         field['defaultValue'] = attr.default
                     else:
                         field['type'] = cls._type_map.get(type(attr), 'auto')
                         # only set a default if this isn't a property or some other kind of "constructed attribute"
-                        if field['type'] != 'auto' and not isinstance(attr, (collections.Callable, property)):
+                        if field['type'] != 'auto' and not isinstance(attr, (collections.abc.Callable, property)):
                             field['defaultValue'] = attr
                 if isinstance(attr, InstrumentedAttribute) and isinstance(attr.property, RelationshipProperty):
                     field['_model'] = attr.property.mapper.class_.__name__
