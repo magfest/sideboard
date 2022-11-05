@@ -10,8 +10,8 @@ import jinja2
 import cherrypy
 
 try:
-    import cherrys
-    cherrypy.lib.sessions.RedisSession = cherrys.RedisSession
+    from sideboard.lib._redissession import RedisSession
+    cherrypy.lib.sessions.RedisSession = RedisSession
 except ImportError:
     # cherrys not installed, so redis sessions not supported
     pass

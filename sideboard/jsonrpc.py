@@ -3,7 +3,6 @@ import json
 import traceback
 
 import cherrypy
-from cherrypy.lib.jsontools import json_decode
 
 from sideboard.lib import log, config, serializer
 from sideboard.websockets import trigger_delayed_notifications
@@ -31,7 +30,7 @@ def force_json_in():
     if cherrypy.request.method in ('POST', 'PUT'):
         body = request.body.fp.read()
         try:
-            cherrypy.serving.request.json = json_decode(body.decode('utf-8'))
+            cherrypy.serving.request.json = json.load(body.decode('utf-8'))
         except ValueError:
             raise cherrypy.HTTPError(400, 'Invalid JSON document')
 

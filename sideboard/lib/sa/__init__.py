@@ -11,6 +11,7 @@ from sqlalchemy import event
 from sqlalchemy.ext import declarative
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Query, sessionmaker, configure_mappers
+from sqlalchemy.orm.decl_base import _declarative_constructor
 from sqlalchemy.types import TypeDecorator, String, DateTime, CHAR, Unicode
 
 from sideboard.lib import log, config
@@ -180,16 +181,6 @@ def check_constraint_naming_convention(constraint, table):
     return constraint_name
 
 
-# SQLAlchemy doesn't expose its default constructor as a nicely importable
-# function, so we grab it from the function defaults.
-if six.PY2:
-    _spec_args, _spec_varargs, _spec_kwargs, _spec_defaults = inspect.getargspec(declarative.declarative_base)
-else:
-    _declarative_spec = inspect.getfullargspec(declarative.declarative_base)
-    _spec_args, _spec_defaults = _declarative_spec.args, _declarative_spec.defaults
-declarative_base_constructor = dict(zip(reversed(_spec_args), reversed(_spec_defaults)))['constructor']
-
-
 def declarative_base(*orig_args, **orig_kwargs):
     """
     Replacement for SQLAlchemy's declarative_base, which adds these features:
@@ -212,7 +203,7 @@ def declarative_base(*orig_args, **orig_kwargs):
                 """
                 if '_model' in kwargs:
                     assert kwargs.pop('_model') == self.__class__.__name__
-                declarative_base_constructor(self, *args, **kwargs)
+                _declarative_constructor(self, *args, **kwargs)
                 for attr, col in self.__table__.columns.items():
                     if kwargs.get(attr) is None and col.default:
                         self.__dict__.setdefault(attr, col.default.execute())

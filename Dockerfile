@@ -1,4 +1,4 @@
-FROM python:3.6.14
+FROM python:3.11.0
 MAINTAINER RAMS Project "code@magfest.org"
 LABEL version.sideboard ="1.0"
 WORKDIR /app
@@ -69,11 +69,18 @@ RUN curl -SLO "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-
 # required for python-prctl
 RUN apt-get update && apt-get install -y libcap-dev && rm -rf /var/lib/apt/lists/*
 
-ADD . /app/
 RUN pip3 install virtualenv \
   && virtualenv --always-copy /app/env \
-	&& /app/env/bin/pip3 install paver "setuptools<58"
+	&& /app/env/bin/pip3 install paver
+
+ADD requirements.txt requirements.txt
+ADD test_requirements.txt test_requirements.txt
+ADD setup.py setup.py
+ADD sideboard/_version.py sideboard/_version.py
+ADD pavement.py pavement.py
+
 RUN /app/env/bin/paver install_deps
+ADD . /app/
 
 CMD /app/env/bin/python3 /app/sideboard/run_server.py
 EXPOSE 8282
