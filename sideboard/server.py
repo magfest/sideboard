@@ -110,19 +110,6 @@ class SideboardWebSocket(WebSocketDispatcher):
         return WebSocketDispatcher.check_authentication()
 
 
-class SideboardRpcWebSocket(SideboardWebSocket):
-    """
-    This web socket handler will be used by programs wishing to call services
-    exposed by plugins over web socket connections.  There is no authentication
-    performed because we assume that our external-facing web server will require
-    a valid client cert to access this resource.
-    """
-
-    @classmethod
-    def check_authentication(cls):
-        return {'username': 'rpc'}
-
-
 app_config = {
     '/static': {
         'tools.staticdir.on': True,
@@ -131,10 +118,6 @@ app_config = {
     '/ws': {
         'tools.websockets.on': True,
         'tools.websockets.handler_cls': SideboardWebSocket
-    },
-    '/wsrpc': {
-        'tools.websockets.on': True,
-        'tools.websockets.handler_cls': SideboardRpcWebSocket
     }
 }
 if config['debug']:
