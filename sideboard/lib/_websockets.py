@@ -97,7 +97,7 @@ class WebSocket(object):
 
     def __init__(self, url=None, ssl_opts=None, connect_immediately=True, max_wait=2):
         self.ws = None
-        self.url = url or 'ws://127.0.0.1:{}/wsrpc'.format(config['cherrypy']['server.socket_port'])
+        self.url = url or 'ws://127.0.0.1:{}/ws'.format(config['cherrypy']['server.socket_port'])
         self._lock = RLock()
         self._callbacks = {}
         self._counter = count()

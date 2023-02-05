@@ -401,10 +401,6 @@ class WebSocketDispatcher(WebSocket):
         session_fields: We copy session data for the  currently-authenticated
             user who made the incoming websocket connection; by default we only
             copy the username, but this can be overridden in configuration.
-            Remember that Sideboard exposes two websocket handlers at /ws and
-            /wsrpc, with /ws being auth-protected (so the username field will be
-            meaningful) and /wsrpc being client-cert protected (so the username
-            will always be 'rpc').
 
         header_fields: We copy header fields from the request that initiated the
             websocket connection.

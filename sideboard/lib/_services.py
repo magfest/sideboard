@@ -176,7 +176,7 @@ def _ws_url(host, rpc_opts):
     Given a hostname and set of config options returned by _rpc_opts, return the
     standard URL websocket endpoint for a Sideboard remote service.
     """
-    return '{protocol}://{host}/wsrpc'.format(host=host, protocol='wss' if rpc_opts['ca'] else 'ws')
+    return '{protocol}://{host}/ws'.format(host=host, protocol='wss' if rpc_opts['ca'] else 'ws')
 
 
 def _register_rpc_services(rpc_services):
