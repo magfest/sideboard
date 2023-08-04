@@ -7,6 +7,7 @@ import pytest
 
 import sqlalchemy
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.pool import NullPool
 from sqlalchemy.orm import relationship
 from sqlalchemy.types import Boolean, Integer, UnicodeText
 from sqlalchemy.schema import Column, CheckConstraint, ForeignKey, MetaData, Table, UniqueConstraint
@@ -121,10 +122,10 @@ class CrudableClass(CrudableMixin, Base):
 
     @string_and_int_hybrid_property.expression
     def string_and_int_hybrid_property(cls):
-        return case([
+        return case(
             (cls.string_model_attr == None, ''),
             (cls.int_model_attr == None, '')
-        ], else_=(cls.string_model_attr + ' ' + cls.int_model_attr))
+        , else_=(cls.string_model_attr + ' ' + cls.int_model_attr))
 
     @property
     def unsettable_property(self):
@@ -150,7 +151,7 @@ class BasicClassMixedIn(CrudableMixin, Base):
 
 
 class Session(SessionManager):
-    engine = sqlalchemy.create_engine('sqlite:////tmp/test_sa.db')
+    engine = sqlalchemy.create_engine('sqlite:////tmp/test_sa.db', poolclass=NullPool)
 
     class SessionMixin(object):
         def user(self, name):

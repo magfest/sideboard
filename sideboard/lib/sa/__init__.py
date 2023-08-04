@@ -210,7 +210,7 @@ def declarative_base(*orig_args, **orig_kwargs):
                 _declarative_constructor(self, *args, **kwargs)
                 for attr, col in self.__table__.columns.items():
                     if kwargs.get(attr) is None and col.default:
-                        self.__dict__.setdefault(attr, col.default.execute())
+                        self.__dict__.setdefault(attr, col.default.arg(col))
 
         orig_kwargs['cls'] = Mixed
         if 'name' not in orig_kwargs:

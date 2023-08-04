@@ -764,7 +764,7 @@ def make_crud_service(Session):
             if isinstance(value, dict):
                 model_class = Session.resolve_model(value.get('_model'))
                 field = value.get('select', 'id')
-                value = select([getattr(model_class, field)], cls._resolve_filters(value))
+                value = select(getattr(model_class, field)).where(cls._resolve_filters(value))
 
             return {
                 'eq': lambda field, val: field == val,
