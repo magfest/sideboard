@@ -33,7 +33,6 @@ if config['cherrypy']['server.socket_port'] == 0:
     cherrypy.config.update({'server.socket_port': available_port})
 
 
-@pytest.mark.functional
 class SideboardServerTest(TestCase):
     port = config['cherrypy']['server.socket_port']
     jsonrpc_url = 'http://127.0.0.1:{}/jsonrpc'.format(port)
@@ -445,7 +444,7 @@ class TestWebsocketsCrudSubscriptions(SideboardServerTest):
 
     def make_crud_method(self, name):
         def crud_method(*args, **kwargs):
-            log.debug('mocked crud.{}'.format(name))
+            log.debug('mocked crud.%s'.format(name))
             assert not getattr(self.mr, name + '_error', False)
             return uuid4().hex
 

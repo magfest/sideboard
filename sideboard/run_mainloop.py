@@ -17,12 +17,12 @@ def mainloop_daemon():
         if pid == 0:
             mainloop()
         else:
-            log.debug('writing pid ({}) to pidfile ({})', pid, args.pidfile)
+            log.debug('writing pid (%s) to pidfile (%s)', pid, args.pidfile)
             try:
                 with open(args.pidfile, 'w') as f:
                     f.write('{}'.format(pid))
             except:
-                log.error('unexpected error writing pid ({}) to pidfile ({})', pid, args.pidfile, exc_info=True)
+                log.error('unexpected error writing pid (%s) to pidfile (%s)', pid, args.pidfile, exc_info=True)
 
 
 @entry_point

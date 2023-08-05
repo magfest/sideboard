@@ -15,7 +15,7 @@ class FakeExit(Exception):
 
 
 class TestSep(object):
-    @pytest.yield_fixture(autouse=True)
+    @pytest.fixture(autouse=True)
     def automocks(self, monkeypatch):
         monkeypatch.setattr(sep, 'exit', Mock(side_effect=FakeExit), raising=False)
         prev_argv, prev_points = sys.argv[:], _entry_points.copy()

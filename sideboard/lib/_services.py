@@ -176,7 +176,7 @@ def _ws_url(host, rpc_opts):
     Given a hostname and set of config options returned by _rpc_opts, return the
     standard URL websocket endpoint for a Sideboard remote service.
     """
-    return '{protocol}://{host}/wsrpc'.format(host=host, protocol='wss' if rpc_opts['ca'] else 'ws')
+    return '{protocol}://{host}/ws'.format(host=host, protocol='wss' if rpc_opts['ca'] else 'ws')
 
 
 def _register_rpc_services(rpc_services):
@@ -218,6 +218,6 @@ class _SideboardCoreServices(object):
     """
     def poll(self):
         """empty method which exists only to help keep WebSockets alive"""
-        log.debug('sideboard.poll by user {}', threadlocal.get('username'))
+        log.debug('sideboard.poll by user %s', threadlocal.get('username'))
 
 services.register(_SideboardCoreServices(), 'sideboard')
