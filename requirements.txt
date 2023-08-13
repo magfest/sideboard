@@ -6,7 +6,7 @@ paver>=1.2.2
 pip>=1.5.6
 psutil>=5.4.1
 python-prctl>=1.6.1; 'linux' in sys_platform
-redis==4.3.6
+redis==4.4.4
 requests>=2.2.1
 rpctools>=0.3.1
 sh>=1.09
