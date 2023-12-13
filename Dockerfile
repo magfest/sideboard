@@ -68,12 +68,18 @@ RUN curl -SLO "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-
 
 # required for python-prctl
 RUN apt-get update && apt-get install -y libcap-dev && rm -rf /var/lib/apt/lists/*
-
-ADD . /app/
 RUN pip3 install virtualenv \
   && virtualenv --always-copy /app/env \
 	&& /app/env/bin/pip3 install paver
+
+# install requirements.txt stuff in an earlier layer
+# this is just to speed up local builds in dev
+ADD requirements.txt /app/
+RUN /app/env/bin/pip3 install -r requirements.txt
+
+ADD . /app/
 RUN /app/env/bin/paver install_deps
 
 CMD /app/env/bin/python3 /app/sideboard/run_server.py
 EXPOSE 8282
+
