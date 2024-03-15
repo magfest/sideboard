@@ -121,7 +121,7 @@ class DaemonTask(object):
                     else:
                         break
                 else:
-                    log.warning('not all daemons have been joined: {}', self.threads)
+                    log.warning('not all daemons have been joined: %s', self.threads)
                     del self.threads[:]
 
 

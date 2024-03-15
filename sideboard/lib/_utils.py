@@ -5,7 +5,8 @@ from functools import wraps
 from datetime import datetime, date
 from contextlib import contextmanager
 from threading import RLock, Condition, current_thread
-from collections import Sized, Iterable, Mapping, defaultdict
+from collections.abc import Sized, Iterable, Mapping
+from collections import defaultdict
 
 
 def is_listy(x):

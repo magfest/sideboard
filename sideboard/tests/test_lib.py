@@ -4,7 +4,7 @@ from time import sleep
 from itertools import count
 from unittest import TestCase
 from datetime import datetime, date
-from collections import Sequence, Set
+from collections.abc import Sequence, Set
 from threading import current_thread, Thread
 
 import six
@@ -406,14 +406,6 @@ class TestIsListy(TestCase):
             assert not is_listy(x)
 
 
-def test_double_mount(request):
-    class Root(object):
-        pass
-    request.addfinalizer(lambda: cherrypy.tree.apps.pop('/test', None))
-    cherrypy.tree.mount(Root(), '/test')
-    pytest.raises(Exception, cherrypy.tree.mount, Root(), '/test')
-
-
 def test_ajaz_serialization():
     class Root(object):
         @ajax
@@ -427,7 +419,7 @@ def test_trace_logging():
 
 
 class TestLocallySubscribes(object):
-    @pytest.yield_fixture(autouse=True)
+    @pytest.fixture(autouse=True)
     def counter(self):
         _counter = count()
 

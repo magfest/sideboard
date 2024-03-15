@@ -21,7 +21,7 @@ def mock_wsd():
     return wsd
 
 
-@pytest.yield_fixture(autouse=True)
+@pytest.fixture(autouse=True)
 def cleanup():
     yield
     threadlocal.reset()
@@ -101,11 +101,11 @@ class TestBroadcast(object):
         assert ws1.trigger.called and ws2.trigger.called and not ws3.trigger.called and not ws4.trigger.called
 
     def test_broadcast_error(self, ws4, monkeypatch):
-        monkeypatch.setattr(log, 'warn', Mock())
+        monkeypatch.setattr(log, 'warning', Mock())
         WebSocketDispatcher.broadcast('foo')
-        assert not ws4.trigger.called and not log.warn.called
+        assert not ws4.trigger.called and not log.warning.called
         WebSocketDispatcher.broadcast('baf')
-        assert ws4.trigger.called and log.warn.called and not ws4.unsubscribe_all.called
+        assert ws4.trigger.called and log.warning.called and not ws4.unsubscribe_all.called
 
     def test_broadcast_closed(self, ws1, ws2):
         ws1.is_closed = True
@@ -326,7 +326,7 @@ def test_update_triggers_with_error(up):
 @pytest.fixture
 def act(wsd, monkeypatch):
     wsd.unsubscribe = Mock()
-    monkeypatch.setattr(log, 'warn', Mock())
+    monkeypatch.setattr(log, 'warning', Mock())
     return wsd
 
 
@@ -334,19 +334,19 @@ def test_unsubscribe_action(act):
     act.unsubscribe = Mock()
     act.internal_action('unsubscribe', 'xxx', 'yyy')
     act.unsubscribe.assert_called_with('xxx')
-    assert not log.warn.called
+    assert not log.warning.called
 
 
 def test_unknown_action(act):
     act.internal_action('does_not_exist', 'xxx', 'yyy')
     assert not act.unsubscribe.called
-    assert log.warn.called
+    assert log.warning.called
 
 
 def test_no_action(act):
     act.internal_action(None, 'xxx', 'yyy')
     assert not act.unsubscribe.called
-    assert not log.warn.called
+    assert not log.warning.called
 
 
 @pytest.fixture

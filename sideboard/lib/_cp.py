@@ -9,12 +9,8 @@ from six.moves.urllib_parse import quote
 import jinja2
 import cherrypy
 
-try:
-    import cherrys
-    cherrypy.lib.sessions.RedisSession = cherrys.RedisSession
-except ImportError:
-    # cherrys not installed, so redis sessions not supported
-    pass
+from sideboard.lib._redissession import RedisSession
+cherrypy.lib.sessions.RedisSession = RedisSession
 
 import sideboard.lib
 from sideboard.lib import log, config, serializer
@@ -92,7 +88,7 @@ def _run_shutdown():
             try:
                 func()
             except Exception:
-                log.warn('Ignored exception during shutdown', exc_info=True)
+                log.warning('Ignored exception during shutdown', exc_info=True)
 
 stopped = Event()
 on_startup(stopped.clear, priority=0)

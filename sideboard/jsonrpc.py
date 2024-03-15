@@ -3,7 +3,6 @@ import json
 import traceback
 
 import cherrypy
-from cherrypy.lib.jsontools import json_decode
 
 from sideboard.lib import log, config, serializer
 from sideboard.websockets import trigger_delayed_notifications
@@ -31,7 +30,7 @@ def force_json_in():
     if cherrypy.request.method in ('POST', 'PUT'):
         body = request.body.fp.read()
         try:
-            cherrypy.serving.request.json = json_decode(body.decode('utf-8'))
+            cherrypy.serving.request.json = json.loads(body.decode('utf-8'))
         except ValueError:
             raise cherrypy.HTTPError(400, 'Invalid JSON document')
 
@@ -49,14 +48,14 @@ def _make_jsonrpc_handler(services, debug=config['debug'],
 
         def error(code, message):
             body = {'jsonrpc': '2.0', 'id': id, 'error': {'code': code, 'message': message}}
-            log.warn('returning error message: {!r}', body)
+            log.warning('returning error message: %s', body)
             return body
 
         body = cherrypy.request.json
         if not isinstance(body, dict):
             return error(ERR_INVALID_JSON, 'invalid json input {!r}'.format(cherrypy.request.body))
 
-        log.debug('jsonrpc request body: {!r}', body)
+        log.debug('jsonrpc request body: %s', body)
 
         id, params = body.get('id'), body.get('params', [])
         if 'method' not in body:
@@ -83,7 +82,7 @@ def _make_jsonrpc_handler(services, debug=config['debug'],
         try:
             response = {'jsonrpc': '2.0', 'id': id,
                         'result': getattr(service, function)(*args, **kwargs)}
-            log.debug('returning success message: {!r}', response)
+            log.debug('returning success message: %s', response)
             return response
         except Exception as e:
             errback(e, 'unexpected jsonrpc error calling ' + method)
