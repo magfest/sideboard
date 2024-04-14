@@ -110,28 +110,6 @@ happen auth-free, or you need to enter your credentials each time
 
 
 @task
-def assert_all_files_import_unicode_literals():
-    """
-    error if a python file is found in sideboard or plugins that does not import unicode_literals; \
-this is skipped for Python 3
-    """
-    if sys.version_info[0] == 2:
-        all_files_found = []
-        cmd = ("find '%s' -name '*.py' ! -size 0 "
-               "-exec grep -RL 'from __future__ import.*unicode_literals.*$' {} \;")
-        for test_dir in chain(['sideboard'], collect_plugin_dirs(module=True)):
-            output = sh(cmd % test_dir, capture=True)
-            if output:
-                all_files_found.append(output)
-
-        if all_files_found:
-            print('the following files did not include "from __future__ import unicode_literals":')
-            print(''.join(all_files_found))
-            raise BuildFailure("there were files that didn't include "
-                               '"from __future__ import unicode_literals"')
-
-
-@task
 def assert_all_projects_correctly_define_a_version():
     """
     error if there are plugins where we can't find a version defined
