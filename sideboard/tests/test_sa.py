@@ -7,6 +7,7 @@ import pytest
 
 import sqlalchemy
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.pool import NullPool
 from sqlalchemy.orm import relationship
 from sqlalchemy.types import Boolean, Integer, UnicodeText
 from sqlalchemy.schema import Column, CheckConstraint, ForeignKey, MetaData, Table, UniqueConstraint
@@ -41,7 +42,7 @@ class Boss(Base):
 @regex_validation('username', r'[0-9a-zA-z]+', 'Usernames may only contain alphanumeric characters')
 class Account(Base):
     user_id = Column(UUID(), ForeignKey('user.id', ondelete='RESTRICT'), nullable=False)
-    user = relationship(User)
+    user = relationship(User, overlaps="employees")
     username = Column(UnicodeText(), nullable=False, unique=True)
     password = Column(UnicodeText(), nullable=False)
 
@@ -90,7 +91,7 @@ class CrudableMixin(object):
     }
 )
 @text_length_validation('string_model_attr', 2, 100)
-@regex_validation('string_model_attr', '^[A-Za-z0-9\.\_\-]+$', 'test thing')
+@regex_validation('string_model_attr', r'^[A-Za-z0-9\.\_\-]+$', 'test thing')
 @text_length_validation('overridden_desc', 1, 100)
 @text_length_validation('nonexistant_field', 1, 100)
 class CrudableClass(CrudableMixin, Base):
@@ -121,10 +122,10 @@ class CrudableClass(CrudableMixin, Base):
 
     @string_and_int_hybrid_property.expression
     def string_and_int_hybrid_property(cls):
-        return case([
+        return case(
             (cls.string_model_attr == None, ''),
             (cls.int_model_attr == None, '')
-        ], else_=(cls.string_model_attr + ' ' + cls.int_model_attr))
+        , else_=(cls.string_model_attr + ' ' + cls.int_model_attr))
 
     @property
     def unsettable_property(self):
@@ -150,7 +151,7 @@ class BasicClassMixedIn(CrudableMixin, Base):
 
 
 class Session(SessionManager):
-    engine = sqlalchemy.create_engine('sqlite:////tmp/test_sa.db')
+    engine = sqlalchemy.create_engine('sqlite:////tmp/test_sa.db', poolclass=NullPool)
 
     class SessionMixin(object):
         def user(self, name):
@@ -233,6 +234,7 @@ class TestDeclarativeBaseConstructor(object):
 
         assert Foo().id is None
 
+    @pytest.mark.filterwarnings("ignore:Unmanaged access of declarative attribute")
     def test_declarative_base_without_parameters(self):
 
         @declarative_base
@@ -241,6 +243,7 @@ class TestDeclarativeBaseConstructor(object):
 
         assert BaseTest.__tablename__ == 'base_test'
 
+    @pytest.mark.filterwarnings("ignore:Unmanaged access of declarative attribute")
     def test_declarative_base_with_parameters(self):
 
         @declarative_base(name=str('NameOverride'))
@@ -673,13 +676,12 @@ class TestCrudUpdate(object):
 
 
 class TestCrudDelete(object):
-    def test_delete_cascades_to_tags(self):
-        pytest.skip('sqlite is not compiled with foreign key support on Jenkins; this test works on my machine but not on Jenkins')
+    def test_delete_cascades_to_tags(self, db):
         Session.crud.delete(query_from(db.turner_account))
         Session.crud.delete(query_from(db.turner))
         with Session() as session:
-            self.assertEqual(1, session.query(Account).count())
-            self.assertEqual(2, session.query(Tag).count())
+            assert 1 == session.query(Account).count()
+            assert 2 == session.query(Tag).count()
 
     def test_delete_by_id(self, db):
         Session.crud.delete({'_model': 'Account', 'field': 'id', 'value': db.turner_account['id']})

@@ -401,10 +401,6 @@ class WebSocketDispatcher(WebSocket):
         session_fields: We copy session data for the  currently-authenticated
             user who made the incoming websocket connection; by default we only
             copy the username, but this can be overridden in configuration.
-            Remember that Sideboard exposes two websocket handlers at /ws and
-            /wsrpc, with /ws being auth-protected (so the username field will be
-            meaningful) and /wsrpc being client-cert protected (so the username
-            will always be 'rpc').
 
         header_fields: We copy header fields from the request that initiated the
             websocket connection.
@@ -509,7 +505,7 @@ class WebSocketDispatcher(WebSocket):
             try:
                 websocket.trigger(client=client, callback=callback, trigger=trigger)
             except:
-                log.warn('ignoring unexpected trigger error', exc_info=True)
+                log.warning('ignoring unexpected trigger error', exc_info=True)
 
     @property
     def is_closed(self):
@@ -568,7 +564,7 @@ class WebSocketDispatcher(WebSocket):
            debug message and then exit without error.
         """
         if self.is_closed:
-            log.debug('ignoring send on an already closed websocket: {}', message)
+            log.debug('ignoring send on an already closed websocket: %s', message)
             self.unsubscribe_all()
             return
 
@@ -582,7 +578,7 @@ class WebSocketDispatcher(WebSocket):
             if cached_fingerprint == fingerprint and repeat_send:
                 return
 
-        log.debug('sending {}', message)
+        log.debug('sending %s', message)
         message = json.dumps(message, cls=sideboard.lib.serializer,
                                       separators=(',', ':'), sort_keys=True)
         with self.send_lock:
@@ -595,7 +591,7 @@ class WebSocketDispatcher(WebSocket):
         subscriptions, remove this websocket from the registry of instances,
         and log a message before closing.
         """
-        log.info('closing: code={!r} reason={!r}', code, reason)
+        log.info('closing: code=%s reason=%s', code, reason)
         self.instances.discard(self)
         self.unsubscribe_all()
         WebSocket.closed(self, code, reason)
@@ -685,7 +681,7 @@ class WebSocketDispatcher(WebSocket):
         if action == 'unsubscribe':
             self.unsubscribe(client)
         elif action is not None:
-            log.warn('unknown action {!r}', action)
+            log.warning('unknown action %s', action)
 
     def clear_cached_response(self, client, callback):
         """
@@ -715,7 +711,7 @@ class WebSocketDispatcher(WebSocket):
             log.error(message)
             self.send(error=message)
         else:
-            log.debug('received {}', fields)
+            log.debug('received %s', fields)
             responder.defer(self, fields)
 
     def handle_message(self, message):

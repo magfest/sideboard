@@ -88,7 +88,7 @@ def _run_shutdown():
             try:
                 func()
             except Exception:
-                log.warn('Ignored exception during shutdown', exc_info=True)
+                log.warning('Ignored exception during shutdown', exc_info=True)
 
 stopped = Event()
 on_startup(stopped.clear, priority=0)

@@ -7,6 +7,7 @@ import pytest
 import sqlalchemy
 from sqlalchemy import event
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import NullPool
 
 from sideboard.lib import config, services
 
@@ -71,7 +72,7 @@ def patch_session(Session, request):
 
     name = Session.__module__.split('.')[0]
     db_path = '/tmp/{}.db'.format(name)
-    Session.engine = sqlalchemy.create_engine('sqlite+pysqlite:///' + db_path)
+    Session.engine = sqlalchemy.create_engine('sqlite+pysqlite:///' + db_path, poolclass=NullPool)
     event.listen(Session.engine, 'connect', lambda conn, record: conn.execute('pragma foreign_keys=ON'))
     Session.session_factory = sessionmaker(bind=Session.engine, autoflush=False, autocommit=False,
                                            query_cls=Session.QuerySubclass)

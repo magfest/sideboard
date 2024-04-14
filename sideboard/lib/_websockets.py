@@ -6,7 +6,7 @@ from copy import deepcopy
 from itertools import count
 from threading import RLock, Event
 from datetime import datetime, timedelta
-from collections import Mapping, MutableMapping
+from collections.abc import Mapping, MutableMapping
 
 import six
 from ws4py.client.threadedclient import WebSocketClient
@@ -41,7 +41,7 @@ class _WebSocketClientDispatcher(WebSocketClient):
         self.connected = False
 
     def send(self, data):
-        log.debug('sending {!r}', data)
+        log.debug('sending %s', data)
         assert self.connected, 'tried to send data on closed websocket {!r}'.format(self.url)
         if isinstance(data, Mapping):
             data = json.dumps(data)
@@ -49,7 +49,7 @@ class _WebSocketClientDispatcher(WebSocketClient):
 
     def received_message(self, message):
         message = message.data if isinstance(message.data, six.text_type) else message.data.decode('utf-8')
-        log.debug('received {!r}', message)
+        log.debug('received %s', message)
         try:
             message = json.loads(message)
         except:
@@ -97,7 +97,7 @@ class WebSocket(object):
 
     def __init__(self, url=None, ssl_opts=None, connect_immediately=True, max_wait=2):
         self.ws = None
-        self.url = url or 'ws://127.0.0.1:{}/wsrpc'.format(config['cherrypy']['server.socket_port'])
+        self.url = url or 'ws://127.0.0.1:{}/ws'.format(config['cherrypy']['server.socket_port'])
         self._lock = RLock()
         self._callbacks = {}
         self._counter = count()
@@ -148,7 +148,7 @@ class WebSocket(object):
         try:
             self.call(self.poll_method)
         except:
-            log.warning('no poll response received from {!r}, closing connection, will attempt to reconnect', self.url, exc_info=True)
+            log.warning('no poll response received from %s, closing connection, will attempt to reconnect', self.url, exc_info=True)
             self.ws.close()
         else:
             self._last_poll = datetime.now()
@@ -169,7 +169,7 @@ class WebSocket(object):
                 self.ws = self.WebSocketDispatcher(self._dispatcher, self.url, ssl_opts=self.ssl_opts)
                 self.ws.connect()
             except Exception as e:
-                log.warn('failed to connect to {}: {}', self.url, str(e))
+                log.warning('failed to connect to %s: %s', self.url, str(e))
                 self._last_reconnect_attempt = datetime.now()
                 self._reconnect_attempts += 1
             else:
@@ -180,18 +180,18 @@ class WebSocket(object):
         return '{}-{}'.format(prefix, next(self._counter))
 
     def _send(self, **kwargs):
-        log.debug('sending {}', kwargs)
+        log.debug('sending %s', kwargs)
         with self._lock:
             assert self.connected, 'tried to send data on closed websocket {!r}'.format(self.url)
             try:
                 return self.ws.send(kwargs)
             except:
-                log.warn('failed to send {!r} on {!r}, closing websocket and will attempt to reconnect', kwargs, self.url)
+                log.warning('failed to send %s on %s, closing websocket and will attempt to reconnect', kwargs, self.url)
                 self.ws.close()
                 raise
 
     def _dispatch(self, message):
-        log.debug('dispatching {}', message)
+        log.debug('dispatching %s', message)
         try:
             assert isinstance(message, Mapping), 'incoming message is not a dictionary'
             assert 'client' in message or 'callback' in message, 'no callback or client in message {}'.format(message)
@@ -217,7 +217,7 @@ class WebSocket(object):
         >>> ws.connect()
         """
         _, exc, _ = sys.exc_info()
-        log.error('no callback registered for message {!r}, message ignored: {}', message, exc)
+        log.error('no callback registered for message %s, message ignored: %s', message, exc)
 
     @property
     def connected(self):
@@ -242,7 +242,7 @@ class WebSocket(object):
                 break
         else:
             if max_wait:
-                log.warn('websocket {!r} not connected after {} seconds', self.url, max_wait)
+                log.warning('websocket %s not connected after %s seconds', self.url, max_wait)
 
     def close(self):
         """
@@ -300,7 +300,7 @@ class WebSocket(object):
 
         paramback = self._callbacks[client].get('paramback')
         params = self.preprocess(method, paramback() if paramback else (args or kwargs))
-        self._callbacks[client].setdefault('errback', lambda result: log.error('{}(*{}, **{}) returned an error: {!r}', method, args, kwargs, result))
+        self._callbacks[client].setdefault('errback', lambda result: log.error('%s(*%s, **%s) returned an error: %s', method, args, kwargs, result))
         self._callbacks[client].update({
             'method': method,
             'params': params
@@ -309,7 +309,7 @@ class WebSocket(object):
         try:
             self._send(method=method, params=params, client=client)
         except:
-            log.warn('initial subscription to {} at {!r} failed, will retry on reconnect', method, self.url)
+            log.warning('initial subscription to %s at %s failed, will retry on reconnect', method, self.url)
 
         return client
 
@@ -635,4 +635,4 @@ class MultiSubscription(object):
             try:
                 self._callback(self.ws.call(self.method, *self.args, **self.kwargs), ws)
             except:
-                log.warn('failed to fetch latest data from {} on {}', self.method, ws.url)
+                log.warning('failed to fetch latest data from %s on %s', self.method, ws.url)
