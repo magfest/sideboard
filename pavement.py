@@ -2,7 +2,6 @@ from __future__ import unicode_literals, print_function
 import os
 import sys
 import glob
-import pkg_resources
 from itertools import chain
 from os.path import abspath, dirname, exists, join
 
@@ -179,12 +178,6 @@ def run_all_assertions():
 ])
 def create_plugin(options):
     """create a plugin skeleton to start a new project"""
-
-    # this is actually needed thanks to the skeleton using jinja2 (and six, although that's changeable)
-    try:
-        pkg_resources.get_distribution("sideboard")
-    except pkg_resources.DistributionNotFound:
-        raise BuildFailure("This command must be run from within a configured virtual environment.")
 
     plugin_name = options.create_plugin.name
 
