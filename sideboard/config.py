@@ -156,17 +156,17 @@ def parse_config(requesting_file_path, is_plugin=True):
     root_conf = ['root = "{}"\n'.format(root_dir), 'module_root = "{}"\n'.format(module_dir)]
     temp_config = configobj.ConfigObj(root_conf, interpolation=False, encoding='utf-8')
 
-    environment_config = load_section_from_environment(plugin_name, spec)
-    print(f"Environment config for {plugin_name}")
-    print(json.dumps(environment_config, indent=2, sort_keys=True))
-    temp_config.merge(configobj.ConfigObj(environment_config, encoding='utf-8', interpolation=False))
-
     for config_path in get_config_files(requesting_file_path, is_plugin):
         # this gracefully handles nonexistent files
         file_config = configobj.ConfigObj(str(config_path), encoding='utf-8', interpolation=False)
         print(f"File config for {plugin_name} from {config_path}")
         print(json.dumps(file_config, indent=2, sort_keys=True))
         temp_config.merge(file_config)
+
+    environment_config = load_section_from_environment(plugin_name, spec)
+    print(f"Environment config for {plugin_name}")
+    print(json.dumps(environment_config, indent=2, sort_keys=True))
+    temp_config.merge(configobj.ConfigObj(environment_config, encoding='utf-8', interpolation=False))
 
     # combining the merge files to one file helps configspecs with interpolation
     with NamedTemporaryFile(delete=False) as config_outfile:
