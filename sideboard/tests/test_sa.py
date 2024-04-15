@@ -91,7 +91,7 @@ class CrudableMixin(object):
     }
 )
 @text_length_validation('string_model_attr', 2, 100)
-@regex_validation('string_model_attr', '^[A-Za-z0-9\\.\\_\\-]+$', 'test thing')
+@regex_validation('string_model_attr', r'^[A-Za-z0-9\.\_\-]+$', 'test thing')
 @text_length_validation('overridden_desc', 1, 100)
 @text_length_validation('nonexistant_field', 1, 100)
 class CrudableClass(CrudableMixin, Base):

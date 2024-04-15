@@ -1,4 +1,4 @@
-FROM python:3.11.4 as build
+FROM python:3.12.3 as build
 MAINTAINER RAMS Project "code@magfest.org"
 LABEL version.sideboard ="1.0"
 WORKDIR /app

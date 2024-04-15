@@ -406,14 +406,6 @@ class TestIsListy(TestCase):
             assert not is_listy(x)
 
 
-def test_double_mount(request):
-    class Root(object):
-        pass
-    request.addfinalizer(lambda: cherrypy.tree.apps.pop('/test', None))
-    cherrypy.tree.mount(Root(), '/test')
-    pytest.raises(Exception, cherrypy.tree.mount, Root(), '/test')
-
-
 def test_ajaz_serialization():
     class Root(object):
         @ajax

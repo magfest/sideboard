@@ -9,12 +9,8 @@ from six.moves.urllib_parse import quote
 import jinja2
 import cherrypy
 
-try:
-    from sideboard.lib._redissession import RedisSession
-    cherrypy.lib.sessions.RedisSession = RedisSession
-except ImportError:
-    # cherrys not installed, so redis sessions not supported
-    pass
+from sideboard.lib._redissession import RedisSession
+cherrypy.lib.sessions.RedisSession = RedisSession
 
 import sideboard.lib
 from sideboard.lib import log, config, serializer

@@ -201,8 +201,6 @@ def _register_rpc_services(rpc_services):
             jservice = getattr(jproxy, service_name)
             if rpc_services.get(host, {}).get('jsonrpc_only'):
                 service = jservice
-            else:
-                service = services._register_websocket(_ws_url(host, rpc_opts), ssl_opts=ssl_opts, connect_immediately=False)
 
             services.register(service, service_name, _jsonrpc=jservice, _override=True)
 
