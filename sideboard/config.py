@@ -1,6 +1,7 @@
 from __future__ import unicode_literals
 import pathlib
 import json
+import yaml
 import os
 
 from os import unlink
@@ -123,7 +124,7 @@ def load_section_from_environment(path, section):
             else:
                 name = normalize_name(f"{path}_{setting}")
                 if name in os.environ:
-                    config[setting] = os.environ.get(normalize_name(name))
+                    config[setting] = yaml.safe_load(os.environ.get(normalize_name(name)))
     return config
 
 def parse_config(requesting_file_path, is_plugin=True):
