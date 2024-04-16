@@ -91,6 +91,9 @@ def get_config_files(requesting_file_path, is_plugin):
                 absolute_config_files.append(root_dir / path)
     return absolute_config_files
 
+def normalize_name(name):
+    return name.replace(".", "_")
+
 def load_section_from_environment(path, section):
     """
     Looks for configuration in environment variables. 
@@ -109,7 +112,7 @@ def load_section_from_environment(path, section):
         if setting == "__many__":
             prefix = f"{path}_"
             for envvar in os.environ:
-                if envvar.startswith(prefix):
+                if envvar.startswith(prefix) and not envvar.split(prefix, 1)[1] in [normalize_name(x) for x in section]:
                     config[envvar.split(prefix, 1)[1]] = os.environ[envvar]
         else:
             if isinstance(section[setting], configobj.Section):
@@ -118,9 +121,9 @@ def load_section_from_environment(path, section):
                 if child:
                     config[setting] = child
             else:
-                name = f"{path}_{setting}"
+                name = normalize_name(f"{path}_{setting}")
                 if name in os.environ:
-                    config[setting] = os.environ.get(name)
+                    config[setting] = os.environ.get(normalize_name(name))
     return config
 
 def parse_config(requesting_file_path, is_plugin=True):
