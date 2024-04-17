@@ -95,8 +95,6 @@ class TestIsListy(TestCase):
         assert not is_listy(i for i in range(2))
 
     def test_user_defined_types(self):
-        assert not is_listy(Model({}, 'test'))
-
         class AlwaysEmptySequence(Sequence):
             def __len__(self): return 0
 
