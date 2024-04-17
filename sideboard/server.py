@@ -1,16 +1,7 @@
 from __future__ import unicode_literals
-import os
-import sys
-
 import cherrypy
 
-from sideboard.lib import config, threadlocal
-
-
-def reset_threadlocal():
-    threadlocal.reset(username=cherrypy.session.get("username"))
-
-cherrypy.tools.reset_threadlocal = cherrypy.Tool('before_handler', reset_threadlocal, priority=51)
+from sideboard.lib import config
 
 cherrypy_config = {}
 for setting, value in config['cherrypy'].items():

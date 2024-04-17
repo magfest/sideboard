@@ -2,11 +2,9 @@ from __future__ import unicode_literals
 import sys
 import ctypes, ctypes.util
 import psutil
-import platform
 import traceback
 import threading
 
-from sideboard.lib import log, config, on_startup, on_shutdown, class_property
 from sideboard.debugging import register_diagnostics_status_function
 
 # Replaces the prior prctl implementation with a direct call to pthread to change thread names
@@ -89,77 +87,3 @@ def general_system_info():
     out += ['Mem: ' + repr(psutil.virtual_memory()) if psutil else '<unknown>']
     out += ['Swap: ' + repr(psutil.swap_memory()) if psutil else '<unknown>']
     return '\n'.join(out)
-
-class threadlocal(object):
-    """
-    This class exposes a dict-like interface on top of the threading.local
-    utility class; the "get", "set", "setdefault", and "clear" methods work the
-    same as for a dict except that each thread gets its own keys and values.
-
-    Sideboard clears out all existing values and then initializes some specific
-    values in the following situations:
-
-    1) CherryPy page handlers have the 'username' key set to whatever value is
-        returned by cherrypy.session['username'].
-
-    2) Service methods called via JSON-RPC have the following two fields set:
-        -> username: as above
-        -> websocket_client: if the JSON-RPC request has a "websocket_client"
-            field, it's value is set here; this is used internally as the
-            "originating_client" value in notify() and plugins can ignore this
-
-    3) Service methods called via websocket have the following three fields set:
-        -> username: as above
-        -> websocket: the WebSocketDispatcher instance receiving the RPC call
-        -> client_data: see the client_data property below for an explanation
-        -> message: the RPC request body; this is present on the initial call
-            but not on subscription triggers in the broadcast thread
-    """
-    _threadlocal = threading.local()
-
-    @classmethod
-    def get(cls, key, default=None):
-        return getattr(cls._threadlocal, key, default)
-
-    @classmethod
-    def set(cls, key, val):
-        return setattr(cls._threadlocal, key, val)
-
-    @classmethod
-    def setdefault(cls, key, val):
-        val = cls.get(key, val)
-        cls.set(key, val)
-        return val
-
-    @classmethod
-    def clear(cls):
-        cls._threadlocal.__dict__.clear()
-
-    @classmethod
-    def get_client(cls):
-        """
-        If called as part of an initial websocket RPC request, this returns the
-        client id if one exists, and otherwise returns None.  Plugins probably
-        shouldn't need to call this method themselves.
-        """
-        return cls.get('client') or cls.get('message', {}).get('client')
-
-    @classmethod
-    def reset(cls, **kwargs):
-        """
-        Plugins should never call this method directly without a good reason; it
-        clears out all existing values and replaces them with the key-value
-        pairs passed as keyword arguments to this function.
-        """
-        cls.clear()
-        for key, val in kwargs.items():
-            cls.set(key, val)
-
-    @class_property
-    def client_data(cls):
-        """
-        This propery is basically the websocket equivalent of cherrypy.session;
-        it's a dictionary where your service methods can place data which you'd
-        like to use in subsequent method calls.
-        """
-        return cls.setdefault('client_data', {})

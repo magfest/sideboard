@@ -12,10 +12,6 @@ import configobj
 from validate import Validator
 
 
-class ConfigurationError(RuntimeError):
-    pass
-
-
 def get_module_and_root_dirs(requesting_file_path, is_plugin):
     """
     Returns the "module_root" and "root" directories for the given file path.
@@ -185,7 +181,7 @@ def parse_config(requesting_file_path, is_plugin=True):
     unlink(temp_name)
 
     if validation is not True:
-        raise ConfigurationError('configuration validation error(s) (): {!r}'.format(
+        raise RuntimeError('configuration validation error(s) (): {!r}'.format(
             configobj.flatten_errors(config, validation))
         )
 

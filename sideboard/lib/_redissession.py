@@ -7,6 +7,7 @@ except ImportError:
 
 from cherrypy.lib.sessions import Session
 import redis
+import cherrypy
 from redis import Sentinel
 
 class RedisSession(Session):
@@ -86,3 +87,5 @@ class RedisSession(Session):
         """Release the lock on the currently-loaded session data."""
         self.locks[self.prefix+self.id].release()
         self.locked = False
+        
+cherrypy.lib.sessions.RedisSession = RedisSession
