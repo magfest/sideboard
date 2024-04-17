@@ -90,7 +90,7 @@ def request_cached_property(func):
     Sometimes we want a property to be cached for the duration of a request,
     with concurrent requests each having their own cached version.  This does
     that via the threadlocal class, such that each HTTP request CherryPy serves
-    and each RPC request served via websocket or JSON-RPC will have its own
+    and each RPC request served via JSON-RPC will have its own
     cached value, which is cleared and then re-generated on later requests.
     """
     from sideboard.lib import threadlocal

@@ -1,1 +1,0 @@
-{% if sqlalchemy %}sqlalchemy.url = "sqlite:////opt/sideboard/db/{{ plugin }}.db"{% endif %}

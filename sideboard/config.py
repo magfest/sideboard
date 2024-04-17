@@ -191,10 +191,6 @@ def parse_config(requesting_file_path, is_plugin=True):
 
     if is_plugin:
         sideboard_config = globals()['config']
-        config['plugins'] = deepcopy(sideboard_config['plugins'])
-        if 'rpc_services' in config:
-            from sideboard.lib._services import _register_rpc_services
-            _register_rpc_services(config['rpc_services'])
 
         if 'default_url' in config:
             priority = config.get('default_url_priority', 0)

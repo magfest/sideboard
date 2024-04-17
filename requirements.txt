@@ -12,4 +12,3 @@ sh==2.0.6
 six==1.16.0
 SQLAlchemy==1.4.52
 wheel==0.43.0
-ws4py==0.5.1

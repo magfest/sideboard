@@ -12,40 +12,7 @@ import pytest
 import cherrypy
 from mock import Mock
 
-from sideboard.lib._services import _Services
-from sideboard.websockets import local_broadcast, local_subscriptions, local_broadcaster
-from sideboard.lib import Model, serializer, ajax, is_listy, log, notify, locally_subscribes, cached_property, request_cached_property, threadlocal, register_authenticator, restricted, all_restricted, RWGuard
-
-
-class TestServices(TestCase):
-    def setUp(self):
-        self.services = _Services()
-
-    def test_service_registration(self):
-        self.services.register(self, 'foo')
-        self.services.foo.assertTrue(True)
-
-    def test_service_double_registration(self):
-        self.services.register(self, 'foo')
-        self.services.register(self, 'bar')
-        self.assertRaises(AssertionError, self.services.register, self, 'foo')
-
-    def test_service_preregistration_getattr(self):
-        foo = self.services.foo
-        self.services.register(self, 'foo')
-        foo.assertTrue(True)
-
-    def test_method_whitelisting(self):
-        """
-        When __all__ is defined for a service, we should raise an exception if
-        a client calls a method whose name is not inclueded in __all__.
-        """
-        self.__all__ = ['bar']
-        self.bar = self.baz = lambda: 'Hello World'
-        self.services.register(self, 'foo')
-        assert 'Hello World' == self.services.foo.bar()
-        with pytest.raises(AssertionError):
-            self.services.foo.baz()
+from sideboard.lib import Model, serializer, ajax, is_listy, log, cached_property, request_cached_property, threadlocal, register_authenticator, restricted, all_restricted, RWGuard
 
 
 class TestModel(TestCase):
@@ -416,36 +383,6 @@ def test_ajaz_serialization():
 
 def test_trace_logging():
     log.trace('normally this would be an error')
-
-
-class TestLocallySubscribes(object):
-    @pytest.fixture(autouse=True)
-    def counter(self):
-        _counter = count()
-
-        @locally_subscribes('foo', 'bar')
-        def counter():
-            return next(_counter)
-
-        yield counter
-        local_subscriptions.clear()
-
-    def test_basic(self, counter):
-        local_broadcast(['foo', 'bar'])
-        assert 1 == counter()  # was only called once even though it matched multiple channels
-
-    def test_exception(self):
-        errored = Mock(side_effect=ValueError)
-        working = Mock()
-        locally_subscribes('foo')(errored)
-        locally_subscribes('foo')(working)
-        local_broadcast('foo')
-        assert errored.called and working.called  # exception didn't halt execution
-
-    def test_notify_triggers_local_updates(self, monkeypatch):
-        monkeypatch.setattr(local_broadcaster, 'defer', Mock())
-        notify('foo')
-        local_broadcaster.defer.assert_called_with(['foo'], trigger='manual', originating_client=None)
 
 
 def test_cached_property():

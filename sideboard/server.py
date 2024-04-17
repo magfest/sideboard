@@ -9,7 +9,7 @@ from sideboard.lib import config, threadlocal
 
 
 def reset_threadlocal():
-    threadlocal.reset(**{field: cherrypy.session.get(field) for field in config['ws.session_fields']})
+    threadlocal.reset(username=cherrypy.session.get("username"))
 
 cherrypy.tools.reset_threadlocal = cherrypy.Tool('before_handler', reset_threadlocal, priority=51)
 

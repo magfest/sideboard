@@ -9,7 +9,7 @@ from sqlalchemy import event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
 
-from sideboard.lib import config, services
+from sideboard.lib import config
 
 
 def get_available_port():
@@ -34,23 +34,6 @@ def get_available_port():
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind(('127.0.0.1', 0))
         return sock.getsockname()[1]
-
-
-@pytest.fixture
-def service_patcher(request):
-    class TestService(object):
-        def __init__(self, methods):
-            self.__dict__.update(methods)
-
-    def patch(name, service):
-        if isinstance(service, dict):
-            service = TestService(service)
-        orig_service = services.get_services().get(name)
-        services.register(service, name)
-        request.addfinalizer(lambda: services.get_services().pop(name, None))
-        if orig_service:
-            request.addfinalizer(lambda: services.get_services().update({name: orig_service}))
-    return patch
 
 
 @pytest.fixture

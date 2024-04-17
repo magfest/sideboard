@@ -1,7 +1,6 @@
 FROM python:3.12.3-slim as build
-MAINTAINER RAMS Project "code@magfest.org"
-LABEL version.sideboard ="1.0"
 WORKDIR /app
+ENV PYTHONPATH=/app:/app/plugins/*/
 
 ADD requirements.txt requirements.txt
 RUN --mount=type=cache,target=/root/.cache \
