@@ -6,8 +6,6 @@ import platform
 import traceback
 import threading
 
-import six
-
 from sideboard.lib import log, config, on_startup, on_shutdown, class_property
 from sideboard.debugging import register_diagnostics_status_function
 
@@ -38,12 +36,8 @@ def _thread_name_insert(self):
     _set_current_thread_ids_from(self)
     threading.Thread._bootstrap_inner_original(self)
 
-if six.PY3:
     threading.Thread._bootstrap_inner_original = threading.Thread._bootstrap_inner
     threading.Thread._bootstrap_inner = _thread_name_insert
-else:
-    threading.Thread._bootstrap_inner_original = threading.Thread._Thread__bootstrap
-    threading.Thread._Thread__bootstrap = _thread_name_insert
 
 # set the ID's of the main thread
 threading.current_thread().name = 'sideboard_main'

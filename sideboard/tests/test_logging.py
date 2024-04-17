@@ -2,7 +2,7 @@ from __future__ import unicode_literals
 import logging
 import unittest
 
-from six import StringIO
+from io import StringIO
 
 
 class LoggerSetupTest(unittest.TestCase):

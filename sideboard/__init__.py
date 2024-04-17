@@ -2,7 +2,6 @@ from __future__ import unicode_literals
 import os
 import importlib
 
-import six
 import cherrypy
 
 from sideboard._version import __version__

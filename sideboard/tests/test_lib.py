@@ -7,7 +7,6 @@ from datetime import datetime, date
 from collections.abc import Sequence, Set
 from threading import current_thread, Thread
 
-import six
 import pytest
 import cherrypy
 from mock import Mock
@@ -80,8 +79,6 @@ class TestIsListy(TestCase):
     def test_sized_builtin(self):
         sized = [(), (1,), [], [1], set(), set([1]), frozenset(), frozenset([1]),
                  bytearray(), bytearray(1)]
-        if six.PY2:
-            sized.extend([xrange(0), xrange(2), buffer(''), buffer('x')])
         for x in sized:
             assert is_listy(x)
 

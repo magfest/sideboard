@@ -4,9 +4,6 @@ from threading import Event
 from functools import wraps
 from collections import defaultdict
 
-from six.moves.urllib_parse import quote
-
-import jinja2
 import cherrypy
 
 from sideboard.lib._redissession import RedisSession
@@ -183,35 +180,6 @@ def _guess_autoescape(template_name):
         return False
     ext = template_name.rsplit('.', 1)[1]
     return ext in ('html', 'htm', 'xml')
-
-
-class render_with_templates(object):
-    """
-    Class decorator for CherryPy application objects which causes all of your page
-    handler methods which return dictionaries to render Jinja templates found in this
-    directory using those dictionaries.  So if you have a page handler called my_page
-    which returns a dictionary, the template my_page.html in the template_dir
-    directory will be rendered with that dictionary.  An "env" attribute gets added
-    to the class which is a Jinja environment.
-
-    For convenience, if the optional "restricted" parameter is passed, this class is
-    also passed through the @all_restricted class decorator.
-    """
-    def __init__(self, template_dir, restricted=False):
-        self.template_dir, self.restricted = template_dir, restricted
-
-    def __call__(self, klass):
-        klass.env = jinja2.Environment(autoescape=_guess_autoescape, loader=jinja2.FileSystemLoader(self.template_dir))
-        klass.env.filters['jsonify'] = lambda x: klass.env.filters['safe'](json.dumps(x, cls=serializer))
-
-        if self.restricted:
-            all_restricted(self.restricted)(klass)
-
-        for name, func in list(klass.__dict__.items()):
-            if hasattr(func, '__call__'):
-                setattr(klass, name, renders_template(func))
-
-        return klass
 
 
 class all_restricted(object):
