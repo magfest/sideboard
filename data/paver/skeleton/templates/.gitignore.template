@@ -1,5 +1,0 @@
-.idea
-env
-*.pyc
-*.egg-info
-dist

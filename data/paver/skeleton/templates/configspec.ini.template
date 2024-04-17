@@ -1,2 +1,0 @@
-{% if sqlalchemy %}sqlalchemy.url = string{% endif %}
-{% if webapp %}template_dir = string(default="%(module_root)s/templates"){% endif %}
