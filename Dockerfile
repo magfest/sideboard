@@ -76,4 +76,4 @@ RUN pip3 install virtualenv \
 RUN /app/env/bin/paver install_deps
 
 CMD /app/env/bin/python3 /app/sideboard/run_server.py
-EXPOSE 8282
+EXPOSE 80
