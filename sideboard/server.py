@@ -170,16 +170,16 @@ def mount(root, script_name='', config=None):
     assert script_name not in cherrypy.tree.apps, '{} has already been mounted, probably by another plugin'.format(script_name)
     return orig_mount(root, script_name, recursive_coerce(config))
 
-orig_mount = cherrypy.tree.mount
-cherrypy.tree.mount = mount
-root = Root()
-if config['cherrypy']['tools.cpstats.on']:
-    root.stats = cpstats.StatsPage()
-cherrypy.tree.mount(root, '', app_config)
+#orig_mount = cherrypy.tree.mount
+#cherrypy.tree.mount = mount
+#root = Root()
+#if config['cherrypy']['tools.cpstats.on']:
+#    root.stats = cpstats.StatsPage()
+#cherrypy.tree.mount(root, '', app_config)
 
-if config['cherrypy']['profiling.on']:
-    # If profiling is turned on then expose the web UI, otherwise ignore it.
-    from sideboard.lib import Profiler
-    cherrypy.tree.mount(Profiler(config['cherrypy']['profiling.path']), '/profiler')
+#if config['cherrypy']['profiling.on']:
+#    # If profiling is turned on then expose the web UI, otherwise ignore it.
+#    from sideboard.lib import Profiler
+#    cherrypy.tree.mount(Profiler(config['cherrypy']['profiling.path']), '/profiler')
 
-sys.modules.pop('six.moves.winreg', None)  # kludgy workaround for CherryPy's autoreloader erroring on winreg for versions which have this
+#sys.modules.pop('six.moves.winreg', None)  # kludgy workaround for CherryPy's autoreloader erroring on winreg for versions which have this
