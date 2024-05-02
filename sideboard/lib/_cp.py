@@ -16,6 +16,7 @@ except ImportError:
     from cherrypy.lib.sessions import Session
     import redis
     import pickle
+    import threading
     from redis import Sentinel
 
     class RedisSession(Session):
