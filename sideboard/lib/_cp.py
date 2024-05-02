@@ -15,6 +15,7 @@ try:
 except ImportError:
     from cherrypy.lib.sessions import Session
     import redis
+    import pickle
     from redis import Sentinel
 
     class RedisSession(Session):
@@ -62,15 +63,16 @@ except ImportError:
 
         def _load(self):
             try:
-            return pickle.loads(self.cache.get(self.prefix+self.id))
+                return pickle.loads(self.cache.get(self.prefix+self.id))
             except TypeError:
             # if id not defined pickle can't load None and raise TypeError
-            return None
+                return None
 
         def _save(self, expiration_time):
             pickled_data = pickle.dumps(
                 (self._data, expiration_time),
-                pickle.HIGHEST_PROTOCOL)
+                pickle.HIGHEST_PROTOCOL
+            )
 
             result = self.cache.setex(self.prefix+self.id, self.timeout * 60, pickled_data)
 
