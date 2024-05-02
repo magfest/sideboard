@@ -69,6 +69,8 @@ RUN curl -SLO "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-
 # required for python-prctl
 RUN apt-get update && apt-get install -y libcap-dev && rm -rf /var/lib/apt/lists/*
 
+RUN ln -s /app/plugins/uber/healthcheck.sh /app/healthcheck.sh
+
 ADD . /app/
 RUN pip3 install virtualenv \
   && virtualenv --always-copy /app/env \
